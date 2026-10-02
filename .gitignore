@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches and virtual environments
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+node_modules/
+
+# Output and temporary documents
+*.tmp
+*.tmp.*
+unpacked/
+brand-kit/
+test_tmp/
+out.docx
+out.pptx
+out.xlsx
+*.pdf
+page-*.jpg
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
