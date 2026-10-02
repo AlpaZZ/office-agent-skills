@@ -29,12 +29,12 @@ CAUSAL_CLAIM_PATTERNS = [
 ]
 
 METRIC_PATTERNS = [
-    re.compile(r"\b([0-9]{1,3}\.[0-9]{1,3})\s*(?:%|percent)\b", re.IGNORECASE),
-    re.compile(r"\b(?:AUC|F1|Accuracy|Sensitivity|Specificity|Precision|Recall)\s*[:=]\s*([0-9\.]+)", re.IGNORECASE),
+    re.compile(r"\b([0-9]{1,3}(?:\.[0-9]+)?)\s*(?:%|percent\b)", re.IGNORECASE),
+    re.compile(r"\b(?:AUC|F1|Accuracy|Sensitivity|Specificity|Precision|Recall|R2|R-squared)\s*[:=]\s*([0-9\.]+)", re.IGNORECASE),
 ]
 
 VARIANCE_PATTERNS = [
-    re.compile(r"[±\+\/\-]\s*[0-9\.]+", re.IGNORECASE),
+    re.compile(r"(?:±|\+\/\-|\+\-)\s*[0-9\.]+", re.IGNORECASE),
     re.compile(r"\b(?:std|std dev|standard deviation|confidence interval|95%\s*CI)\b", re.IGNORECASE),
 ]
 
@@ -186,13 +186,15 @@ def audit_manuscript(text: str, filename: str = "manuscript") -> Dict[str, Any]:
         })
 
     # 4. Variance Reporting Across Document
-    total_metrics_found = len(re.findall(r"\b[0-9]{1,3}\.[0-9]{1,2}%\b", text))
-    total_variance_found = len(re.findall(r"[±\+\/\-]\s*[0-9\.]+", text))
+    total_metrics_found = len(re.findall(r"\b[0-9]{1,3}(?:\.[0-9]+)?\s*(?:%|percent\b)", text, re.IGNORECASE))
+    total_variance_found = len(re.findall(r"(?:±|\+\/\-|\+\-)\s*[0-9\.]+", text)) + len(
+        re.findall(r"\b(?:std|std dev|standard deviation|confidence interval|95%\s*CI)\b", text, re.IGNORECASE)
+    )
 
     variance_summary = {
         "metrics_count": total_metrics_found,
         "variance_count": total_variance_found,
-        "has_adequate_variance": (total_variance_found > 0 and total_variance_found >= (total_metrics_found // 4)),
+        "has_adequate_variance": (total_variance_found > 0 and total_variance_found >= max(1, total_metrics_found // 3)),
     }
 
     # 5. Suspicion Trigger (Performance Anomaly Audit)
@@ -264,8 +266,12 @@ def format_text_report(audit: Dict[str, Any]) -> str:
     vsum = audit["variance_summary"]
     lines.append(f"   Percentage Metrics Extracted : {vsum['metrics_count']}")
     lines.append(f"   Variance Markers (+/- or std): {vsum['variance_count']}")
-    if not vsum["has_adequate_variance"] and vsum["metrics_count"] > 3:
-        lines.append("   [WARN] Most metrics appear to be single-run without error bars (+- std).")
+    if vsum["metrics_count"] == 0:
+        lines.append("   [INFO] No percentage metrics extracted.")
+    elif vsum["variance_count"] == 0 and vsum["metrics_count"] > 0:
+        lines.append("   [WARN] Metrics reported as single-run numbers without error bars (+- std) or confidence intervals.")
+    elif not vsum["has_adequate_variance"]:
+        lines.append("   [WARN] Most metrics appear to be single-run without adequate error bars (+- std).")
     else:
         lines.append("   [PASS] Variance indicators detected across reported figures.")
 
