@@ -114,18 +114,16 @@ python skills/xlsx/scripts/recalc.py model.xlsx
 
 ---
 
-## Credits and Acknowledgements
+## Credits and Dependencies
 
-This repository builds upon several open-source projects and libraries:
+This repository uses code, engines, and libraries from the following projects:
 
-- **[BrandDocs](https://github.com/ferdinandobons/brand-docs)** by Ferdinando Bonsegna: The brand extraction engine, fail-closed verification pipeline, and Intermediate Document architecture for Word, PowerPoint, and Excel.
-- **[Pandoc](https://pandoc.org/)** by John MacFarlane and contributors: Document conversion engine providing LaTeX math translation to Word OMML equations and citation processing via citeproc.
-- **[Better BibTeX for Zotero](https://github.com/retorquere/zotero-better-bibtex)** by Emiliano Heyns (retorquere): Automated BibTeX export and citation key generation for Zotero libraries.
-- **[Office Word MCP Server](https://github.com/gongrzhe/office-word-mcp-server)** by GongRzhe: Interface patterns for Word document operations in AI assistants.
-- **[docx](https://github.com/dolanmiu/docx)** (docx-js) by Roman Atachiants: Programmatic Word document generation in JavaScript/Node.js.
-- **[PptxGenJS](https://github.com/gitbrent/PptxGenJS)** by Brent Ely: PowerPoint presentation generation in JavaScript.
-- **[python-docx](https://github.com/python-openxml/python-docx)** by Steve Canny: Python library for reading and writing `.docx` files.
-- **[openpyxl](https://openpyxl.readthedocs.io/)** by Eric Gazoni and Charlie Clark: Python library for reading and writing Excel `.xlsx` workbooks.
+- **[BrandDocs](https://github.com/ferdinandobons/brand-docs)** by Ferdinando Bonsegna: The brand extraction engine and template processing pipeline in `scripts/brandkit/`.
+- **[Pandoc](https://pandoc.org/)** by John MacFarlane and contributors: Document conversion engine used for LaTeX math translation and citation processing in `scripts/pandoc/`.
+- **[python-docx](https://github.com/python-openxml/python-docx)** by Steve Canny: Python library used for document creation and tabular data insertion in `scripts/data/`.
+- **[openpyxl](https://openpyxl.readthedocs.io/)** by Eric Gazoni and Charlie Clark: Python library used for Excel workbook manipulation in `skills/xlsx/`.
+- **[docx](https://github.com/dolanmiu/docx)** (docx-js) by Roman Atachiants: Node.js library used for scratch document creation in `skills/docx/`.
+- **[PptxGenJS](https://github.com/gitbrent/PptxGenJS)** by Brent Ely: Node.js library used for presentation creation in `skills/pptx/`.
 
 ---
 
