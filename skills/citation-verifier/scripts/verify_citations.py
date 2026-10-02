@@ -9,9 +9,9 @@ Features:
 - .docx parsing: reads both Zotero CSL field codes (JSON metadata) and body text/footnotes/tables.
 - .bib parsing: parses BibTeX entries and fields (doi, eprint, pmid, isbn, title, author, url).
 - Text/Markdown parsing: extracts DOIs, arXiv IDs, PMIDs, ISBNs, and paper URLs via regex.
-- Anti-hallucination check: compares paper titles from registries with local document text.
+- Multi-factor identity validation: checks title similarity, author surnames, and publication years.
 - Resilient networking: uses SSL fallback for Windows environments, respectful User-Agent, and caching.
-- Safe console output: ASCII status markers ([PASS], [FAIL], [WARN]) compatible with Windows cp1252.
+- Safe console output: ASCII status markers ([PASS], [WARN], [FAIL], [ERR ]) compatible with Windows cp1252.
 
 Credits:
 - Inspired by John Kitchin's citation-verifier (https://github.com/jkitchin/skillz).
@@ -34,9 +34,17 @@ import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# Default contact email for CrossRef polite API pool
-DEFAULT_EMAIL = os.environ.get("CITATION_VERIFIER_EMAIL", "alfarizki1810@gmail.com")
-USER_AGENT = f"CitationVerifier/1.0 (mailto:{DEFAULT_EMAIL}; https://github.com/AlpaZZ/office-agent-skills)"
+# Optional contact email for CrossRef polite API pool (set via env var)
+DEFAULT_EMAIL = os.environ.get("CITATION_VERIFIER_EMAIL", "")
+
+
+def get_user_agent(email: Optional[str] = None) -> str:
+    """Build User-Agent string with optional polite pool contact email."""
+    contact = email or DEFAULT_EMAIL
+    if contact:
+        return f"CitationVerifier/1.1 (mailto:{contact}; https://github.com/AlpaZZ/office-agent-skills)"
+    return "CitationVerifier/1.1 (https://github.com/AlpaZZ/office-agent-skills)"
+
 
 # Regex Patterns for Citation Identifiers
 DOI_PATTERNS = [
@@ -91,14 +99,13 @@ def _get_ssl_context() -> ssl.SSLContext:
         return ctx
     except Exception:
         pass
-    ctx = ssl._create_unverified_context()
-    return ctx
+    return ssl._create_unverified_context()
 
 
-def _fetch_url(url: str, headers: Optional[Dict[str, str]] = None, timeout: int = 10) -> Tuple[int, bytes, Dict[str, str]]:
+def _fetch_url(url: str, user_agent: str, headers: Optional[Dict[str, str]] = None, timeout: int = 10) -> Tuple[int, bytes, Dict[str, str]]:
     """Fetch URL with timeout and fallback SSL context."""
     req_headers = {
-        "User-Agent": USER_AGENT,
+        "User-Agent": user_agent,
         "Accept": "*/*",
     }
     if headers:
@@ -154,25 +161,103 @@ def titles_match(t1: str, t2: str, threshold: float = 0.65) -> Tuple[bool, float
     # Token overlap check (useful when subtitles are omitted or truncated)
     tokens1 = set(n1.split())
     tokens2 = set(n2.split())
-    stopwords = {"a", "an", "the", "in", "on", "of", "for", "with", "and", "to", "at", "by", "from"}
+    stopwords = {"a", "an", "the", "in", "on", "of", "for", "with", "and", "to", "at", "by", "from", "via", "using"}
     tokens1 -= stopwords
     tokens2 -= stopwords
 
     if tokens1 and tokens2:
         overlap = len(tokens1 & tokens2) / min(len(tokens1), len(tokens2))
-        if overlap >= 0.7:
+        if overlap >= 0.70:
             return True, max(ratio, overlap)
 
     return False, ratio
 
 
+def authors_match(expected_authors: Any, resolved_authors: Optional[List[str]]) -> bool:
+    """Check if any author surname matches between document and registry."""
+    if not expected_authors or not resolved_authors:
+        return True  # Cannot dispute without author information
+
+    if isinstance(expected_authors, str):
+        exp_list = [a.strip() for a in re.split(r"[;,]|\band\b", expected_authors) if a.strip()]
+    elif isinstance(expected_authors, list):
+        exp_list = [str(a).strip() for a in expected_authors if str(a).strip()]
+    else:
+        return True
+
+    exp_surnames = set()
+    for a in exp_list:
+        parts = re.split(r"\s+", a)
+        if parts:
+            exp_surnames.add(parts[0].lower().strip(".,;:"))
+            exp_surnames.add(parts[-1].lower().strip(".,;:"))
+
+    res_surnames = set()
+    for a in resolved_authors:
+        parts = re.split(r"\s+", str(a))
+        if parts:
+            res_surnames.add(parts[0].lower().strip(".,;:"))
+            res_surnames.add(parts[-1].lower().strip(".,;:"))
+
+    # Return True if any surname intersects
+    return bool(exp_surnames & res_surnames)
+
+
+def evaluate_identity(
+    expected_title: Optional[str],
+    resolved_title: str,
+    expected_authors: Optional[Any] = None,
+    resolved_authors: Optional[List[str]] = None,
+    expected_year: Optional[Any] = None,
+    resolved_year: Optional[Any] = None,
+) -> Tuple[str, float, str]:
+    """Multi-factor identity assessment combining title similarity, author surnames, and year.
+
+    Returns:
+        (status, title_similarity, details)
+    Statuses:
+        - IDENTITY_CONFIRMED: Strong match across title, author, and year.
+        - METADATA_PARTIAL: Title similarity is borderline or authors differ; warrants human review.
+        - METADATA_MISMATCH: Substantial divergence in title or topic; likely wrong paper or hallucination.
+    """
+    if not expected_title or not resolved_title:
+        return "IDENTITY_CONFIRMED", 1.0, "Identity assumed (no in-document title provided for comparison)"
+
+    matched, score = titles_match(expected_title, resolved_title)
+
+    author_ok = True
+    if expected_authors and resolved_authors:
+        author_ok = authors_match(expected_authors, resolved_authors)
+
+    year_ok = True
+    if expected_year and resolved_year:
+        try:
+            ey = int(str(expected_year)[:4])
+            ry = int(str(resolved_year)[:4])
+            year_ok = abs(ey - ry) <= 1  # +-1 year tolerance for preprints vs published
+        except Exception:
+            pass
+
+    if score >= 0.82 and author_ok:
+        return "IDENTITY_CONFIRMED", round(score, 2), "Title and author metadata confirmed against registry"
+    elif score >= 0.65 and author_ok and year_ok:
+        return "IDENTITY_CONFIRMED", round(score, 2), f"Identity confirmed (title similarity: {score:.2f})"
+    elif score >= 0.65 and not author_ok:
+        return "METADATA_PARTIAL", round(score, 2), f"Title similar ({score:.2f}), but author names do not match registry"
+    elif 0.50 <= score < 0.65 and author_ok and year_ok:
+        return "METADATA_PARTIAL", round(score, 2), f"Borderline title similarity ({score:.2f}); authors match, review manually"
+    else:
+        return "METADATA_MISMATCH", round(score, 2), f"Registry title differs: '{resolved_title}' (similarity: {score:.2f})"
+
+
 class CitationVerifier:
-    def __init__(self, email: str = DEFAULT_EMAIL, timeout: int = 10, cache_file: Optional[Path] = None, no_cache: bool = False):
-        self.email = email
+    def __init__(self, email: Optional[str] = None, timeout: int = 10, cache_file: Optional[Path] = None, no_cache: bool = False):
+        self.email = email or DEFAULT_EMAIL
         self.timeout = timeout
         self.no_cache = no_cache
         self.cache_file = cache_file or (Path.cwd() / ".citation_cache.json")
         self.cache: Dict[str, Any] = {}
+        self.user_agent = get_user_agent(self.email)
         self._load_cache()
 
     def _load_cache(self):
@@ -191,28 +276,40 @@ class CitationVerifier:
             except Exception:
                 pass
 
-    def verify_doi(self, doi: str, expected_title: Optional[str] = None) -> Dict[str, Any]:
+    def verify_doi(
+        self,
+        doi: str,
+        expected_title: Optional[str] = None,
+        expected_authors: Optional[Any] = None,
+        expected_year: Optional[Any] = None,
+    ) -> Dict[str, Any]:
         """Verify a DOI against CrossRef REST API."""
         clean_doi = _clean_trailing_punct(doi.strip())
         cache_key = f"doi:{clean_doi.lower()}"
+
         if not self.no_cache and cache_key in self.cache:
             res = dict(self.cache[cache_key])
             if expected_title and res.get("title"):
-                matched, score = titles_match(expected_title, res["title"])
-                res["title_similarity"] = round(score, 2)
-                if not matched:
-                    res["status"] = "METADATA_MISMATCH"
-                    res["details"] = f"DOI exists, but resolved title differs: '{res['title']}' (similarity: {score:.2f})"
+                status, score, detail = evaluate_identity(
+                    expected_title,
+                    res["title"],
+                    expected_authors=expected_authors,
+                    resolved_authors=res.get("authors"),
+                    expected_year=expected_year,
+                    resolved_year=res.get("year"),
+                )
+                res["status"] = status
+                res["title_similarity"] = score
+                res["details"] = detail
             return res
 
         url = f"https://api.crossref.org/works/{urllib.parse.quote(clean_doi, safe='/:')}"
         headers = {
-            "User-Agent": f"CitationVerifier/1.0 (mailto:{self.email}; https://github.com/AlpaZZ/office-agent-skills)",
             "Accept": "application/json",
         }
 
         try:
-            status, body, _ = _fetch_url(url, headers=headers, timeout=self.timeout)
+            status, body, _ = _fetch_url(url, user_agent=self.user_agent, headers=headers, timeout=self.timeout)
             if status == 200:
                 data = json.loads(body.decode("utf-8"))
                 item = data.get("message", {})
@@ -228,23 +325,26 @@ class CitationVerifier:
                     if parts:
                         year = parts[0]
 
+                eval_status, score, detail = evaluate_identity(
+                    expected_title,
+                    remote_title,
+                    expected_authors=expected_authors,
+                    resolved_authors=authors,
+                    expected_year=expected_year,
+                    resolved_year=year,
+                )
+
                 res = {
                     "type": "DOI",
                     "identifier": clean_doi,
-                    "status": "VERIFIED",
+                    "status": eval_status,
                     "title": remote_title,
                     "authors": authors[:5],
                     "venue": journal,
                     "year": year,
-                    "details": "Resolved via CrossRef",
+                    "title_similarity": score,
+                    "details": detail if expected_title else "Resolved via CrossRef",
                 }
-
-                if expected_title:
-                    matched, score = titles_match(expected_title, remote_title)
-                    res["title_similarity"] = round(score, 2)
-                    if not matched:
-                        res["status"] = "METADATA_MISMATCH"
-                        res["details"] = f"DOI exists, but resolved title differs: '{remote_title}' (similarity: {score:.2f})"
 
                 self.cache[cache_key] = res
                 self._save_cache()
@@ -275,30 +375,43 @@ class CitationVerifier:
                 "details": f"Connection error: {str(e)}",
             }
 
-    def verify_arxiv(self, arxiv_id: str, expected_title: Optional[str] = None) -> Dict[str, Any]:
+    def verify_arxiv(
+        self,
+        arxiv_id: str,
+        expected_title: Optional[str] = None,
+        expected_authors: Optional[Any] = None,
+        expected_year: Optional[Any] = None,
+    ) -> Dict[str, Any]:
         """Verify an arXiv identifier via the official arXiv API."""
         clean_id = _clean_trailing_punct(arxiv_id.strip())
         cache_key = f"arxiv:{clean_id.lower()}"
+
         if not self.no_cache and cache_key in self.cache:
             res = dict(self.cache[cache_key])
             if expected_title and res.get("title"):
-                matched, score = titles_match(expected_title, res["title"])
-                res["title_similarity"] = round(score, 2)
-                if not matched:
-                    res["status"] = "METADATA_MISMATCH"
-                    res["details"] = f"arXiv article exists, but title differs: '{res['title']}' (similarity: {score:.2f})"
+                status, score, detail = evaluate_identity(
+                    expected_title,
+                    res["title"],
+                    expected_authors=expected_authors,
+                    resolved_authors=res.get("authors"),
+                    expected_year=expected_year,
+                    resolved_year=res.get("year"),
+                )
+                res["status"] = status
+                res["title_similarity"] = score
+                res["details"] = detail
             return res
 
         url = f"https://export.arxiv.org/api/query?id_list={clean_id}"
         try:
-            status, body, _ = _fetch_url(url, timeout=self.timeout)
+            status, body, _ = _fetch_url(url, user_agent=self.user_agent, timeout=self.timeout)
             if status == 200:
                 root = ET.fromstring(body)
                 entry = root.find("{http://www.w3.org/2005/Atom}entry")
                 if entry is not None:
                     title_elem = entry.find("{http://www.w3.org/2005/Atom}title")
                     remote_title = title_elem.text.strip().replace("\n", " ") if title_elem is not None and title_elem.text else ""
-                    
+
                     if "Error" in remote_title or not remote_title:
                         res = {
                             "type": "arXiv",
@@ -310,21 +423,26 @@ class CitationVerifier:
                         authors = [a.find("{http://www.w3.org/2005/Atom}name").text for a in entry.findall("{http://www.w3.org/2005/Atom}author")]
                         published_elem = entry.find("{http://www.w3.org/2005/Atom}published")
                         year = published_elem.text[:4] if published_elem is not None and published_elem.text else None
+
+                        eval_status, score, detail = evaluate_identity(
+                            expected_title,
+                            remote_title,
+                            expected_authors=expected_authors,
+                            resolved_authors=authors,
+                            expected_year=expected_year,
+                            resolved_year=year,
+                        )
+
                         res = {
                             "type": "arXiv",
                             "identifier": clean_id,
-                            "status": "VERIFIED",
+                            "status": eval_status,
                             "title": remote_title,
                             "authors": authors[:5],
                             "year": year,
-                            "details": "Resolved via arXiv API",
+                            "title_similarity": score,
+                            "details": detail if expected_title else "Resolved via arXiv API",
                         }
-                        if expected_title:
-                            matched, score = titles_match(expected_title, remote_title)
-                            res["title_similarity"] = round(score, 2)
-                            if not matched:
-                                res["status"] = "METADATA_MISMATCH"
-                                res["details"] = f"arXiv article exists, but title differs: '{remote_title}' (similarity: {score:.2f})"
                     self.cache[cache_key] = res
                     self._save_cache()
                     return res
@@ -342,16 +460,37 @@ class CitationVerifier:
                 "details": f"arXiv lookup error: {str(e)}",
             }
 
-    def verify_pmid(self, pmid: str, expected_title: Optional[str] = None) -> Dict[str, Any]:
+    def verify_pmid(
+        self,
+        pmid: str,
+        expected_title: Optional[str] = None,
+        expected_authors: Optional[Any] = None,
+        expected_year: Optional[Any] = None,
+    ) -> Dict[str, Any]:
         """Verify a PubMed PMID via NCBI E-utilities."""
         clean_pmid = _clean_trailing_punct(pmid.strip())
         cache_key = f"pmid:{clean_pmid}"
+
+        # Bug fix: check expected_title on cached hits as well
         if not self.no_cache and cache_key in self.cache:
-            return self.cache[cache_key]
+            res = dict(self.cache[cache_key])
+            if expected_title and res.get("title"):
+                status, score, detail = evaluate_identity(
+                    expected_title,
+                    res["title"],
+                    expected_authors=expected_authors,
+                    resolved_authors=res.get("authors"),
+                    expected_year=expected_year,
+                    resolved_year=res.get("year"),
+                )
+                res["status"] = status
+                res["title_similarity"] = score
+                res["details"] = detail
+            return res
 
         url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id={clean_pmid}&retmode=json"
         try:
-            status, body, _ = _fetch_url(url, timeout=self.timeout)
+            status, body, _ = _fetch_url(url, user_agent=self.user_agent, timeout=self.timeout)
             if status == 200:
                 data = json.loads(body.decode("utf-8"))
                 result_obj = data.get("result", {})
@@ -368,22 +507,27 @@ class CitationVerifier:
                         remote_title = pdata.get("title", "")
                         authors_list = [a.get("name") for a in pdata.get("authors", []) if isinstance(a, dict) and "name" in a]
                         year = pdata.get("pubdate", "")[:4]
+
+                        eval_status, score, detail = evaluate_identity(
+                            expected_title,
+                            remote_title,
+                            expected_authors=expected_authors,
+                            resolved_authors=authors_list,
+                            expected_year=expected_year,
+                            resolved_year=year,
+                        )
+
                         res = {
                             "type": "PMID",
                             "identifier": clean_pmid,
-                            "status": "VERIFIED",
+                            "status": eval_status,
                             "title": remote_title,
                             "authors": authors_list[:5],
                             "year": year,
                             "venue": pdata.get("source", ""),
-                            "details": "Resolved via PubMed E-utilities",
+                            "title_similarity": score,
+                            "details": detail if expected_title else "Resolved via PubMed E-utilities",
                         }
-                        if expected_title:
-                            matched, score = titles_match(expected_title, remote_title)
-                            res["title_similarity"] = round(score, 2)
-                            if not matched:
-                                res["status"] = "METADATA_MISMATCH"
-                                res["details"] = f"PMID exists, but title differs: '{remote_title}' (similarity: {score:.2f})"
                     self.cache[cache_key] = res
                     self._save_cache()
                     return res
@@ -405,28 +549,32 @@ class CitationVerifier:
         """Verify an ISBN via Open Library API."""
         clean_isbn = re.sub(r"[^0-9Xx]", "", isbn)
         cache_key = f"isbn:{clean_isbn}"
+
+        # Bug fix: check expected_title on cached hits as well
         if not self.no_cache and cache_key in self.cache:
-            return self.cache[cache_key]
+            res = dict(self.cache[cache_key])
+            if expected_title and res.get("title"):
+                status, score, detail = evaluate_identity(expected_title, res["title"])
+                res["status"] = status
+                res["title_similarity"] = score
+                res["details"] = detail
+            return res
 
         url = f"https://openlibrary.org/isbn/{clean_isbn}.json"
         try:
-            status, body, _ = _fetch_url(url, timeout=self.timeout)
+            status, body, _ = _fetch_url(url, user_agent=self.user_agent, timeout=self.timeout)
             if status == 200:
                 data = json.loads(body.decode("utf-8"))
                 remote_title = data.get("title", "")
+                eval_status, score, detail = evaluate_identity(expected_title, remote_title)
                 res = {
                     "type": "ISBN",
                     "identifier": isbn,
-                    "status": "VERIFIED",
+                    "status": eval_status,
                     "title": remote_title,
-                    "details": "Resolved via Open Library",
+                    "title_similarity": score,
+                    "details": detail if expected_title else "Resolved via Open Library",
                 }
-                if expected_title:
-                    matched, score = titles_match(expected_title, remote_title)
-                    res["title_similarity"] = round(score, 2)
-                    if not matched:
-                        res["status"] = "METADATA_MISMATCH"
-                        res["details"] = f"ISBN exists, but title differs: '{remote_title}' (similarity: {score:.2f})"
                 self.cache[cache_key] = res
                 self._save_cache()
                 return res
@@ -463,12 +611,12 @@ class CitationVerifier:
             return self.cache[cache_key]
 
         try:
-            status, _, _ = _fetch_url(clean_url, timeout=self.timeout)
+            status, _, _ = _fetch_url(clean_url, user_agent=self.user_agent, timeout=self.timeout)
             if status in (200, 301, 302, 307, 308):
                 res = {
                     "type": "URL",
                     "identifier": clean_url,
-                    "status": "VERIFIED",
+                    "status": "IDENTITY_CONFIRMED",
                     "details": f"Accessible (HTTP {status})",
                 }
             elif status in (404, 410):
@@ -594,7 +742,6 @@ def extract_text_from_docx(doc_path: Path) -> str:
             if name.startswith("word/") and name.endswith(".xml"):
                 try:
                     content = zf.read(name).decode("utf-8", errors="replace")
-                    # Quick regex to extract <w:t> content
                     extracted = re.findall(r"<w:t(?:[^>]*)>([^<]+)</w:t>", content)
                     if extracted:
                         texts.append(" ".join(extracted))
@@ -606,7 +753,6 @@ def extract_text_from_docx(doc_path: Path) -> str:
 def extract_from_bibtex(bib_content: str) -> List[Dict[str, Any]]:
     """Parse BibTeX entries and extract identifiers with title/authors."""
     entries = []
-    # Match @type{key, ...} allowing whitespace before closing brace
     pattern = re.compile(r"@(\w+)\s*\{\s*([^,]+),\s*([\s\S]*?)\s*\}\s*(?=@|\Z)", re.MULTILINE)
     for match in pattern.finditer(bib_content):
         entry_type = match.group(1).lower()
@@ -614,7 +760,6 @@ def extract_from_bibtex(bib_content: str) -> List[Dict[str, Any]]:
         body = match.group(3)
 
         fields = {}
-        # Match field = {val} or field = "val"
         field_pattern = re.compile(r"(\w+)\s*=\s*[\"|\{]([\s\S]*?)[\"|\}]\s*(?:,|$)", re.MULTILINE)
         for fmatch in field_pattern.finditer(body):
             fkey = fmatch.group(1).lower()
@@ -734,7 +879,6 @@ def harvest_document_citations(doc_path: Path) -> List[Dict[str, Any]]:
         body_text = extract_text_from_docx(doc_path)
         text_items = scan_raw_text(body_text, source_label="DOCX Body Text")
         for item in text_items:
-            # avoid re-adding DOIs already extracted from Zotero
             if not any(c["identifier"].lower() == item["identifier"].lower() for c in citations):
                 citations.append(item)
 
@@ -797,16 +941,33 @@ def run_verification(citations: List[Dict[str, Any]], verifier: CitationVerifier
         c_type = item.get("type", "DOI")
         ident = item.get("identifier", "").strip()
         expected_title = item.get("title", "").strip() or None
+        expected_authors = item.get("authors") or None
+        expected_year = item.get("year") or None
 
         if not ident:
             continue
 
         if c_type == "DOI":
-            res = verifier.verify_doi(ident, expected_title=expected_title)
+            res = verifier.verify_doi(
+                ident,
+                expected_title=expected_title,
+                expected_authors=expected_authors,
+                expected_year=expected_year,
+            )
         elif c_type == "arXiv":
-            res = verifier.verify_arxiv(ident, expected_title=expected_title)
+            res = verifier.verify_arxiv(
+                ident,
+                expected_title=expected_title,
+                expected_authors=expected_authors,
+                expected_year=expected_year,
+            )
         elif c_type == "PMID":
-            res = verifier.verify_pmid(ident, expected_title=expected_title)
+            res = verifier.verify_pmid(
+                ident,
+                expected_title=expected_title,
+                expected_authors=expected_authors,
+                expected_year=expected_year,
+            )
         elif c_type == "ISBN":
             res = verifier.verify_isbn(ident, expected_title=expected_title)
         elif c_type == "URL":
@@ -833,17 +994,20 @@ def format_text_report(results: List[Dict[str, Any]], target_file: Path) -> str:
     lines.append(f"CITATION VERIFICATION REPORT: {target_file.name}")
     lines.append("=" * 80)
 
-    pass_count = sum(1 for r in results if r["status"] == "VERIFIED")
+    confirmed_count = sum(1 for r in results if r["status"] == "IDENTITY_CONFIRMED")
+    partial_count = sum(1 for r in results if r["status"] == "METADATA_PARTIAL")
     mismatch_count = sum(1 for r in results if r["status"] == "METADATA_MISMATCH")
     fail_count = sum(1 for r in results if r["status"] == "NOT_FOUND")
     err_count = sum(1 for r in results if r["status"] == "LOOKUP_ERROR")
 
     for idx, r in enumerate(results, 1):
         status = r["status"]
-        if status == "VERIFIED":
+        if status == "IDENTITY_CONFIRMED":
             tag = "[PASS]"
+        elif status == "METADATA_PARTIAL":
+            tag = "[WARN:PARTIAL]"
         elif status == "METADATA_MISMATCH":
-            tag = "[WARN]"
+            tag = "[WARN:MISMATCH]"
         elif status == "NOT_FOUND":
             tag = "[FAIL]"
         else:
@@ -863,19 +1027,26 @@ def format_text_report(results: List[Dict[str, Any]], target_file: Path) -> str:
 
     lines.append("")
     lines.append("SUMMARY SCOREBOARD:")
-    lines.append(f"  Total Checked      : {len(results)}")
-    lines.append(f"  Verified [PASS]    : {pass_count}")
-    lines.append(f"  Mismatched [WARN]  : {mismatch_count}")
-    lines.append(f"  Hallucinated [FAIL]: {fail_count}")
-    lines.append(f"  Lookup Errors      : {err_count}")
+    lines.append(f"  Total Checked            : {len(results)}")
+    lines.append(f"  Identity Confirmed [PASS]: {confirmed_count}")
+    lines.append(f"  Metadata Partial   [WARN]: {partial_count}")
+    lines.append(f"  Metadata Mismatch  [WARN]: {mismatch_count}")
+    lines.append(f"  Hallucinated / Missing   : {fail_count} [FAIL]")
+    lines.append(f"  Registry Lookup Errors   : {err_count}")
     lines.append("=" * 80)
 
     if fail_count > 0:
         lines.append("CRITICAL: Hallucinated or invalid citations detected! Review [FAIL] entries.")
-    elif mismatch_count > 0:
-        lines.append("WARNING: Real identifiers detected with mismatched paper titles! Review [WARN] entries.")
+    elif mismatch_count > 0 or partial_count > 0:
+        lines.append("WARNING: Potential metadata mismatches detected! Review [WARN] entries.")
     else:
-        lines.append("SUCCESS: All citations verified against authoritative registries.")
+        lines.append("SUCCESS: All citation identifiers verified against authoritative registries.")
+
+    lines.append("-" * 80)
+    lines.append("EPISTEMIC DISCLAIMER:")
+    lines.append("A verified citation confirms that the paper exists in the registry.")
+    lines.append("It does NOT verify that the cited paper supports the claim made in your text.")
+    lines.append("To verify claim validity, methodology, and dataset leakage, run research-reviewer.")
     lines.append("=" * 80)
     return "\n".join(lines)
 
@@ -885,7 +1056,8 @@ def format_markdown_report(results: List[Dict[str, Any]], target_file: Path) -> 
     lines = []
     lines.append(f"# Citation Verification Report: `{target_file.name}`\n")
 
-    pass_count = sum(1 for r in results if r["status"] == "VERIFIED")
+    confirmed_count = sum(1 for r in results if r["status"] == "IDENTITY_CONFIRMED")
+    partial_count = sum(1 for r in results if r["status"] == "METADATA_PARTIAL")
     mismatch_count = sum(1 for r in results if r["status"] == "METADATA_MISMATCH")
     fail_count = sum(1 for r in results if r["status"] == "NOT_FOUND")
     err_count = sum(1 for r in results if r["status"] == "LOOKUP_ERROR")
@@ -893,10 +1065,11 @@ def format_markdown_report(results: List[Dict[str, Any]], target_file: Path) -> 
     lines.append("| Metric | Count |")
     lines.append("| :--- | :--- |")
     lines.append(f"| Total Identifiers Checked | {len(results)} |")
-    lines.append(f"| **Verified (PASS)** | **{pass_count}** |")
-    lines.append(f"| **Mismatched Metadata (WARN)** | **{mismatch_count}** |")
+    lines.append(f"| **Identity Confirmed (PASS)** | **{confirmed_count}** |")
+    lines.append(f"| **Metadata Partial (WARN)** | **{partial_count}** |")
+    lines.append(f"| **Metadata Mismatch (WARN)** | **{mismatch_count}** |")
     lines.append(f"| **Hallucinated / Missing (FAIL)** | **{fail_count}** |")
-    lines.append(f"| Lookup Errors | {err_count} |\n")
+    lines.append(f"| Registry Lookup Errors | {err_count} |\n")
 
     lines.append("## Detailed Reference Audit\n")
     lines.append("| # | Status | Type | Identifier | Title / Metadata | Notes |")
@@ -904,10 +1077,12 @@ def format_markdown_report(results: List[Dict[str, Any]], target_file: Path) -> 
 
     for idx, r in enumerate(results, 1):
         status = r["status"]
-        if status == "VERIFIED":
+        if status == "IDENTITY_CONFIRMED":
             badge = "**PASS**"
+        elif status == "METADATA_PARTIAL":
+            badge = "**WARN:PARTIAL**"
         elif status == "METADATA_MISMATCH":
-            badge = "**WARN**"
+            badge = "**WARN:MISMATCH**"
         elif status == "NOT_FOUND":
             badge = "**FAIL**"
         else:
@@ -929,12 +1104,12 @@ def format_markdown_report(results: List[Dict[str, Any]], target_file: Path) -> 
         if r.get("expected_title") and r.get("title") and r.get("title") != r.get("expected_title"):
             notes += f"<br>Doc: _{r['expected_title']}_"
 
-        # sanitize pipe characters for markdown table
         title_info = title_info.replace("|", "/")
         notes = notes.replace("|", "/")
 
         lines.append(f"| {idx} | {badge} | {c_type} | {ident_link} | {title_info} | {notes} |")
 
+    lines.append("\n> **Important Note**: A verified citation confirms that the paper exists in the registry. It does **not** verify that the cited paper actually supports the claims made in your document. To verify claim validity, methodology, and dataset leakage, run `research-reviewer`.")
     return "\n".join(lines)
 
 
@@ -946,7 +1121,7 @@ def main():
     parser.add_argument("input_path", help="Path to manuscript or bibliography file (.docx, .bib, .md, .tex, .txt)")
     parser.add_argument("-o", "--output", help="Path to write verification report (.md, .json, or .txt)")
     parser.add_argument("--format", choices=["text", "markdown", "json"], default="text", help="Output format (default: text)")
-    parser.add_argument("--email", default=DEFAULT_EMAIL, help="Contact email for CrossRef polite API pool")
+    parser.add_argument("--email", default=DEFAULT_EMAIL, help="Contact email for CrossRef polite API pool (optional)")
     parser.add_argument("--timeout", type=int, default=10, help="HTTP request timeout in seconds (default: 10)")
     parser.add_argument("--no-cache", action="store_true", help="Bypass local cache and query live APIs")
     parser.add_argument("--cache-file", help="Custom cache file location (default: .citation_cache.json)")
@@ -979,6 +1154,7 @@ def main():
             "target": str(input_path),
             "total": len(results),
             "results": results,
+            "disclaimer": "A verified citation confirms registry existence, not claim validity.",
         }, indent=2)
     elif args.format == "markdown":
         report = format_markdown_report(results, input_path)
@@ -995,7 +1171,7 @@ def main():
 
     # Determine exit code
     has_hallucinations = any(r["status"] == "NOT_FOUND" for r in results)
-    has_mismatches = any(r["status"] == "METADATA_MISMATCH" for r in results)
+    has_mismatches = any(r["status"] in ("METADATA_MISMATCH", "METADATA_PARTIAL") for r in results)
 
     if has_hallucinations or (args.strict and has_mismatches):
         sys.exit(1)

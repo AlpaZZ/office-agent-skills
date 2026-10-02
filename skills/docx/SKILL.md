@@ -1,7 +1,7 @@
 ---
 name: docx
 description: "Comprehensive Word document (.docx/.dotx) engine for creating, editing, styling, and reviewing documents. Covers: (1) Editorial document generation from scratch via docx-js, (2) Academic papers with LaTeX math equations and Zotero/BibTeX citations via Pandoc, (3) Data science tabular injection via python-docx, (4) Legal redlining with Tracked Changes and native comments via OpenXML surgery, (5) Live Zotero CSL field code inspection and injection, and (6) Automated citation verification against CrossRef, arXiv, and PubMed to detect hallucinations. Trigger on any mention of Word documents, reports, proposals, memos, templates, thesis/skripsi formatting, or DOCX manipulation. For strict enterprise brand-template enforcement, delegate to brand-docx."
-license: Proprietary. LICENSE.txt has complete terms
+license: MIT
 ---
 
 # DOCX Creation, Editing, and Analysis Suite
