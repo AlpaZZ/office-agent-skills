@@ -1,6 +1,6 @@
 ---
 name: docx
-description: "Comprehensive Word document (.docx/.dotx) engine for creating, editing, styling, and reviewing documents. Covers: (1) Editorial document generation from scratch via docx-js, (2) Academic papers with LaTeX math equations and Zotero/BibTeX citations via Pandoc, (3) Data science tabular injection via python-docx, (4) Legal redlining with Tracked Changes and native comments via OpenXML surgery, (5) Live Zotero CSL field code inspection and injection, and (6) Automated citation verification against CrossRef, arXiv, and PubMed to detect hallucinations. Trigger on any mention of Word documents, reports, proposals, memos, templates, thesis/skripsi formatting, or DOCX manipulation. For strict enterprise brand-template enforcement, delegate to brand-docx."
+description: "Comprehensive Word document (.docx/.dotx) engine for creating, editing, styling, and reviewing documents. Covers: (1) Layout, margins, typography, and visual image blur/DPI linting via audit_layout.py, (2) Editorial document generation from scratch via docx-js, (3) Academic papers with LaTeX math equations and Zotero/BibTeX citations via Pandoc, (4) Data science tabular injection via python-docx, (5) Legal redlining with Tracked Changes and native comments via OpenXML surgery, (6) Live Zotero CSL field code inspection and injection, and (7) Automated citation verification against CrossRef, arXiv, and PubMed. Trigger on any mention of Word documents, reports, proposals, memos, templates, thesis/skripsi formatting, or DOCX manipulation."
 license: MIT
 ---
 
@@ -96,7 +96,38 @@ python scripts/citations/verify_citations.py references.bib --format json -o aud
 
 ---
 
-## 5. Editorial Creation with docx-js
+## 5. Comprehensive Layout, Typography & Visual Linter
+
+Audits Word documents against publication standards (margins, font hierarchy, line spacing, image DPI, equation types, table overflow, captions, and TOC):
+
+```bash
+# 1. Audit Indonesian thesis / skripsi format (4-4-3-3 cm margins, 1.5/2.0 spacing, 300 DPI images)
+python scripts/audit_layout.py manuscript.docx --profile skripsi-id
+
+# 2. Audit academic journal format (JIKI UI / SINTA 2 - 2 columns, 3-3-3-3 cm margins, single space)
+python scripts/audit_layout.py manuscript.docx --profile jiki-journal
+
+# 3. Audit general academic format (APA 7th - 1 inch margins, double spaced)
+python scripts/audit_layout.py manuscript.docx --profile general
+
+# 4. Export structured JSON for automated pipelines
+python scripts/audit_layout.py manuscript.docx --format json -o layout_audit.json
+```
+
+**Checked Dimensions & Standards**:
+- **Layout & Page Setup**: Margins (Top, Bottom, Left, Right in cm), Paper Size (A4 vs Letter), Orientation, Columns (1 vs 2 columns), Section Breaks, Hyphenation.
+- **Typography & Font Integrity**: Font family consistency, size hierarchy, accidental non-black text (#000000 check), lingering highlight markers.
+- **Paragraph & Line Spacing**: Alignment (Justify / `both`), line spacing (Single vs 1.5 vs Double), paragraph spacing before/after.
+- **Headings & Structure**: Proper `Heading 1/2/3` styles vs raw unstyled bold text ("Fake Headings" that break Navigation Pane and TOC).
+- **Captions & TOC**: Table captions ABOVE table (`Tabel X.Y...`), Figure captions BELOW figure (`Gambar X.Y...`), Table of Contents (`TOC`), List of Tables, List of Figures.
+- **Math Equations**: Native OMML / LaTeX (`<m:oMath>`) vs formulas pasted as raster pictures or screenshots.
+- **Image Quality & Blurriness**: Effective DPI calculation (<150 DPI critical failure), Laplacian blur variance, aspect ratio distortion (squished/stretched images).
+- **Table Formatting**: Column overflow beyond printable margin width, academic three-line tables (no vertical borders), header repeat.
+- **Header & Footer**: Page numbering configuration.
+
+---
+
+## 6. Editorial Creation with docx-js
 
 For bespoke documents created from scratch, write a Node.js script using `docx`:
 
@@ -109,7 +140,7 @@ For bespoke documents created from scratch, write a Node.js script using `docx`:
 
 ---
 
-## 6. Legal Redlining & Document Surgery (Raw OpenXML)
+## 7. Legal Redlining & Document Surgery (Raw OpenXML)
 
 For contract reviews and deep XML modifications:
 
@@ -126,7 +157,7 @@ python scripts/office/validate.py out.docx --original doc.docx
 
 ---
 
-## 7. Schema Validation & Visual Quality Assurance
+## 8. Schema Validation & Visual Quality Assurance
 
 Always verify document deliverables before presenting to the user:
 
@@ -140,4 +171,5 @@ Always verify document deliverables before presenting to the user:
 
 ## Dependencies
 
-`docx` (npm) · `pandoc` · `python-docx` · `openpyxl` · LibreOffice (`soffice`) · `pdftoppm` (Poppler)
+`docx` (npm) · `pandoc` · `python-docx` · `openpyxl` · `Pillow` · `numpy` · LibreOffice (`soffice`) · `pdftoppm` (Poppler)
+
