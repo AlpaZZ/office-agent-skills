@@ -1,19 +1,20 @@
-# Office Agent Skills
+# Office & Research Agent Skills
 
-A collection of skills for working with Word (`.docx`), PowerPoint (`.pptx`), and Excel (`.xlsx`) files in AI coding agents such as Antigravity, Claude Code, and Codex.
+A collection of skills for working with Word (`.docx`), PowerPoint (`.pptx`), and Excel (`.xlsx`) files, as well as scientific peer review and citation verification in AI coding agents such as Antigravity, Claude Code, and Codex.
 
-The repository brings together template-driven brand enforcement, LaTeX math compilation to native Word equations, live Zotero citation management, automated citation verification, tabular data insertion, editorial layouts, and tracked changes.
+The repository brings together template-driven brand enforcement, LaTeX math compilation to native Word equations, live Zotero citation management, automated citation verification, empirical scientific peer review, tabular data insertion, editorial layouts, and tracked changes.
 
 ---
 
 ## Contents
 
-The `skills/` directory contains seven skills:
+The `skills/` directory contains eight skills:
 
 | Skill | Target Files | Primary Function |
 | :--- | :--- | :--- |
 | [`docx`](skills/docx/) | `.docx`, `.dotx` | Compiles LaTeX math via Pandoc, edits live Zotero field codes, formats tables from DataFrames, builds editorial documents with docx-js, and edits tracked changes. |
 | [`citation-verifier`](skills/citation-verifier/) | `.docx`, `.bib`, `.md`, `.tex`, `.txt` | Checks references against CrossRef, arXiv, PubMed, and Open Library to detect fake DOIs and mismatched titles. |
+| [`research-reviewer`](skills/research-reviewer/) | `.docx`, `.md`, `.tex`, `.txt` | Peer reviews manuscripts, audits claim-evidence alignment, detects patient-level data leakage, and stress-tests with Devil's Advocate. |
 | [`brand-docx`](skills/brand-docx/) | `.docx`, `.dotx` | Extracts brand profiles from Word templates and generates documents matching company styles. |
 | [`brand-pptx`](skills/brand-pptx/) | `.pptx`, `.potx` | Extracts slide layouts from PowerPoint templates and generates presentations with native charts. |
 | [`brand-xlsx`](skills/brand-xlsx/) | `.xlsx`, `.xltx` | Fills Excel templates while keeping formulas, number formats, and sheet layout intact. |
@@ -31,8 +32,14 @@ The `skills/` directory contains seven skills:
 
 ### Citation Verification and Anti-Hallucination
 - **Registry Validation**: Validates DOIs against CrossRef, preprints against arXiv, medical literature against PubMed, and books against Open Library.
-- **Title Mismatch Detection**: Compares registered paper titles against in-document titles to catch instances where real DOIs are assigned to fabricated papers.
-- **Direct Word and BibTeX Inspection**: Reads identifiers from both Word Zotero CSL field codes and plain body text without requiring manual text copying.
+- **Multi-Factor Identity Matching**: Checks titles, author surnames, and publication years simultaneously to catch instances where real DOIs are assigned to fabricated paper titles.
+- **Epistemic Distinction**: Enforces the principle that *a verified citation does not equal a verified claim*.
+
+### Scientific Peer Review & Methodology Audit
+- **Claim-Evidence Mapping**: Evaluates empirical assertions against reported data tables and assigns categorical epistemic status (`[FACT]`, `[SUPPORTED INFERENCE]`, `[PLAUSIBLE INFERENCE]`, `[UNSUPPORTED]`, `[CONTRADICTED]`).
+- **Data Leakage Detection**: Audits clinical and imaging datasets for subject-level vs image-level split errors, preprocessing leakage, and metric gaming on imbalanced classes.
+- **Devil's Advocate Stress Testing**: Formulates rival hypotheses (capacity confounds, tuning disparities, shortcut learning) to prevent AI agreeableness and challenge unsupported claims.
+- **Self-Improving Lessons**: Tracks methodological review errors in `LESSONS.md` to prevent recurring oversights.
 
 ### Corporate Template Enforcement
 - Extracts font families, theme palettes, and master layouts from `.dotx`, `.potx`, or `.xltx` files into reusable Brand Profiles.
@@ -73,7 +80,7 @@ cp -r skills/* .agents/skills/
 ### Setup in Claude Code
 Symlink the skills to your Claude skills directory:
 ```bash
-for s in docx citation-verifier brand-docx brand-pptx brand-xlsx pptx xlsx; do
+for s in docx citation-verifier research-reviewer brand-docx brand-pptx brand-xlsx pptx xlsx; do
   ln -s "$(pwd)/skills/$s" "$HOME/.claude/skills/$s"
 done
 ```
@@ -82,27 +89,36 @@ done
 
 ## Usage Examples
 
-### 1. Verify Citations and Audit for Hallucinations
+### 1. Peer Review a Manuscript or Thesis Chapter
 ```bash
-# Audit a Word document
+# Pre-review automated audit for claims and data leakage
+python skills/research-reviewer/scripts/audit_manuscript.py manuscript.docx
+
+# In your agent chat, invoke full scientific peer review:
+# "Review this manuscript with focus on methodology and data leakage: manuscript.docx"
+```
+
+### 2. Verify Citations and Audit for Hallucinations
+```bash
+# Audit references in a Word document
 python skills/citation-verifier/scripts/verify_citations.py manuscript.docx
 
 # Generate a Markdown audit report for peer review
 python skills/citation-verifier/scripts/verify_citations.py draft.md --format markdown -o audit_report.md
 ```
 
-### 2. Compile Markdown with Math and Citations
+### 3. Compile Markdown with Math and Citations
 ```bash
 python skills/docx/scripts/pandoc/compile_academic.py manuscript.md -o paper.docx \
   --bibliography references.bib --csl ieee.csl
 ```
 
-### 3. Inspect Zotero Citations in an Existing Document
+### 4. Inspect Zotero Citations in an Existing Document
 ```bash
 python skills/docx/scripts/zotero/inspect_zotero.py manuscript.docx
 ```
 
-### 4. Inject a New Zotero Citation into Word
+### 5. Inject a New Zotero Citation into Word
 ```bash
 python skills/docx/scripts/zotero/inject_zotero.py manuscript.docx \
   --after "MobileNetV3" --citation-text "[39]" \
@@ -112,18 +128,18 @@ python skills/docx/scripts/zotero/inject_zotero.py manuscript.docx \
   -o updated_manuscript.docx
 ```
 
-### 5. Insert a CSV or DataFrame into Word
+### 6. Insert a CSV or DataFrame into Word
 ```bash
 python skills/docx/scripts/data/dataframe_to_word.py results.csv -o report.docx \
   --title "Tabel 1: Ringkasan Evaluasi"
 ```
 
-### 6. Extract a Brand Profile from a Template
+### 7. Extract a Brand Profile from a Template
 ```bash
 python skills/brand-docx/scripts/cli.py extract --name acme --template template.dotx
 ```
 
-### 7. Verify Excel Formulas
+### 8. Verify Excel Formulas
 ```bash
 python skills/xlsx/scripts/recalc.py model.xlsx
 ```
@@ -132,9 +148,11 @@ python skills/xlsx/scripts/recalc.py model.xlsx
 
 ## Credits and Dependencies
 
-This repository uses code, engines, and libraries from the following projects:
+This repository uses code, engines, and architectural patterns from the following projects:
 
-- **[John Kitchin](https://github.com/jkitchin)** (`jkitchin/skillz`): Reference extraction patterns and verification concept for the `citation-verifier` skill.
+- **[Toadoum](https://github.com/Toadoum)** (`Toadoum/ai-research-skill`): Empirical machine learning research principles, data leakage audit concepts, and recursive self-improving lessons structure in `skills/research-reviewer/`.
+- **[John Kitchin](https://github.com/jkitchin)** (`jkitchin/skillz`): Reference extraction patterns, citation verifier architecture, and scientific claims analysis in `skills/citation-verifier/` and `skills/research-reviewer/`.
+- **[Nosugr](https://github.com/nosugr)** (`nosugr/claude-code-skills`) and **[OceanGIS](https://github.com/oceangis)** (`skill_academic-research-skills`): Multi-perspective peer review orchestration, Devil's Advocate persona, and revision roadmap design in `skills/research-reviewer/`.
 - **[BrandDocs](https://github.com/ferdinandobons/brand-docs)** by Ferdinando Bonsegna: The brand extraction engine and template processing pipeline in `scripts/brandkit/`.
 - **[Pandoc](https://pandoc.org/)** by John MacFarlane and contributors: Document conversion engine used for LaTeX math translation and citation processing in `scripts/pandoc/`.
 - **[python-docx](https://github.com/python-openxml/python-docx)** by Steve Canny: Python library used for document creation and tabular data insertion in `scripts/data/`.

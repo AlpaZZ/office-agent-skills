@@ -27,3 +27,7 @@ page-*.jpg
 .DS_Store
 Thumbs.db
 desktop.ini
+
+.citation_cache.json
+__pycache__/
+*.pyc
