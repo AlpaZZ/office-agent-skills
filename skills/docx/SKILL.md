@@ -1,6 +1,6 @@
 ---
 name: docx
-description: "Comprehensive Word document (.docx/.dotx) engine for creating, editing, styling, and reviewing documents. Covers: (1) Editorial document generation from scratch via docx-js, (2) Academic papers with LaTeX math equations and Zotero/BibTeX citations via Pandoc, (3) Data science tabular injection via python-docx, (4) Legal redlining with Tracked Changes and native comments via OpenXML surgery, and (5) Live Zotero CSL field code inspection, injection, and validation. Trigger on any mention of Word documents, reports, proposals, memos, templates, thesis/skripsi formatting, or DOCX manipulation. For strict enterprise brand-template enforcement, delegate to brand-docx."
+description: "Comprehensive Word document (.docx/.dotx) engine for creating, editing, styling, and reviewing documents. Covers: (1) Editorial document generation from scratch via docx-js, (2) Academic papers with LaTeX math equations and Zotero/BibTeX citations via Pandoc, (3) Data science tabular injection via python-docx, (4) Legal redlining with Tracked Changes and native comments via OpenXML surgery, (5) Live Zotero CSL field code inspection and injection, and (6) Automated citation verification against CrossRef, arXiv, and PubMed to detect hallucinations. Trigger on any mention of Word documents, reports, proposals, memos, templates, thesis/skripsi formatting, or DOCX manipulation. For strict enterprise brand-template enforcement, delegate to brand-docx."
 license: Proprietary. LICENSE.txt has complete terms
 ---
 
@@ -16,6 +16,7 @@ Choose the optimal execution pathway based on task requirements:
 | **On-Brand Corporate** | `brand-docx` (`scripts/brandkit/`) | Preserving company brand profiles, official fonts, colors, and layout shells fail-closed. |
 | **Legal Redline** | Raw OpenXML (`<w:ins>`, `<w:del>`) | Contract reviews, tracked revisions, and multi-file comments (`scripts/comment.py`). |
 | **Zotero Citations** | `scripts/zotero/` | Inspecting, injecting, or validating live `CSL_CITATION` fields without unlinking. |
+| **Citation Verification** | `scripts/citations/` | Auditing documents for fake/hallucinated DOIs, broken URLs, and metadata mismatches against CrossRef/arXiv/PubMed. |
 
 > Detailed decision logic and routing criteria are in [`references/router-matrix.md`](references/router-matrix.md).
 
@@ -78,7 +79,24 @@ After modifying citations, the human author simply opens the document in Microso
 
 ---
 
-## 4. Editorial Creation with docx-js
+## 4. Citation & Reference Verification (Anti-Hallucination)
+
+Detects fake, broken, or mismatched citations in Word documents, BibTeX files, and Markdown drafts against CrossRef, arXiv, and PubMed:
+
+```bash
+# 1. Audit a Word document (checks Zotero CSL XML and body references)
+python scripts/citations/verify_citations.py manuscript.docx
+
+# 2. Generate a clean Markdown audit report for peer review
+python scripts/citations/verify_citations.py draft.md --format markdown -o audit_report.md
+
+# 3. Export machine-readable JSON for CI/CD checks
+python scripts/citations/verify_citations.py references.bib --format json -o audit.json
+```
+
+---
+
+## 5. Editorial Creation with docx-js
 
 For bespoke documents created from scratch, write a Node.js script using `docx`:
 
@@ -91,7 +109,7 @@ For bespoke documents created from scratch, write a Node.js script using `docx`:
 
 ---
 
-## 5. Legal Redlining & Document Surgery (Raw OpenXML)
+## 6. Legal Redlining & Document Surgery (Raw OpenXML)
 
 For contract reviews and deep XML modifications:
 
@@ -108,7 +126,7 @@ python scripts/office/validate.py out.docx --original doc.docx
 
 ---
 
-## 6. Verification & Quality Assurance
+## 7. Schema Validation & Visual Quality Assurance
 
 Always verify document deliverables before presenting to the user:
 

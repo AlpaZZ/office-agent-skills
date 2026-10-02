@@ -94,6 +94,18 @@ custom covers, modern layouts, TOC                                     Track Cha
   - `scripts/zotero/validate_zotero.py` (verify field structure).
 * **Word Refresh**: The human author clicks **Zotero → Refresh** in the Word Ribbon to re-index all numbers.
 
+### Pathway 6: Reference & Citation Verification (Anti-Hallucination)
+* **When to use**:
+  - Reviewing AI-written manuscripts, reports, or thesis chapters for fake citations.
+  - Validating DOIs, arXiv preprints, PMIDs, or publisher URLs in Word (`.docx`), BibTeX (`.bib`), or Markdown (`.md`).
+  - Detecting real DOIs mistakenly or hallucinatorily paired with mismatched paper titles.
+* **Tooling**:
+  - `scripts/citations/verify_citations.py` (or `citation-verifier` skill).
+* **Execution**:
+  ```bash
+  python scripts/citations/verify_citations.py manuscript.docx --format markdown -o audit_report.md
+  ```
+
 ---
 
 ## 3. Unified Verification Gate
@@ -102,4 +114,5 @@ Every output document must pass verification:
 1. **Schema Integrity**: `python scripts/office/validate.py out.docx`
 2. **Formula Integrity (Excel)**: `python scripts/recalc.py out.xlsx` (must show zero errors)
 3. **Zotero Integrity (if citations present)**: `python scripts/zotero/validate_zotero.py out.docx`
-4. **Visual Layout QA**: Render to PDF via `soffice.py` and inspect images via `pdftoppm`.
+4. **Citation Authenticity**: `python scripts/citations/verify_citations.py out.docx` (zero hallucinated citations)
+5. **Visual Layout QA**: Render to PDF via `soffice.py` and inspect images via `pdftoppm`.
