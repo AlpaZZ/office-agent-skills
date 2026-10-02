@@ -161,6 +161,40 @@ def audit_manuscript(text: str, filename: str = "manuscript") -> Dict[str, Any]:
         "has_adequate_variance": (total_variance_found > 0 and total_variance_found >= (total_metrics_found // 4)),
     }
 
+    # 5. Suspicion Trigger (Performance Anomaly Audit)
+    # Triggered when performance exceeds 95% on complex or medical imaging tasks.
+    suspicion_triggers = []
+    high_metric_pat = re.compile(
+        r"\b(?:accuracy|auc|f1|sensitivity|specificity|precision|recall|dice)\b[^\.\n\?!]*?([0-9]{1,3}(?:\.[0-9]+)?)\s*(%|percent)?",
+        re.IGNORECASE,
+    )
+    for s in sentences:
+        for m in high_metric_pat.finditer(s):
+            val_str = m.group(1)
+            is_pct = bool(m.group(2))
+            try:
+                val = float(val_str)
+                val_pct = val if (is_pct or val > 1.0) else val * 100.0
+                if 95.0 <= val_pct <= 100.0:
+                    suspicion_triggers.append({
+                        "severity": "CRITICAL_SCRUTINY",
+                        "metric_found": f"{val_pct:.2f}%",
+                        "sentence": s,
+                        "category": "Performance Anomaly (>95%) - Epistemic Suspicion Trigger",
+                        "finding": f"Reported metric of {val_pct:.2f}% is exceptionally high for noisy empirical/clinical vision data.",
+                        "action": (
+                            "DO NOT PRAISE YET. High accuracy != valid experiment. "
+                            "Mandate 11-point integrity audit: (1) patient-level identity leakage, "
+                            "(2) duplicate/near-duplicate images, (3) train/test contamination, "
+                            "(4) preprocessing/augmentation before split, (5) device/hospital shortcut artifacts, "
+                            "(6) class imbalance gaming, (7) data split methodology, (8) external validation, "
+                            "(9) multi-seed variance, (10) Grad-CAM anatomical plausibility, (11) test memorization."
+                        ),
+                    })
+                    break
+            except ValueError:
+                pass
+
     return {
         "filename": filename,
         "total_sentences": len(sentences),
@@ -168,6 +202,7 @@ def audit_manuscript(text: str, filename: str = "manuscript") -> Dict[str, Any]:
         "leakage_risks": leakage_risks,
         "metric_risks": metric_risks,
         "variance_summary": variance_summary,
+        "suspicion_triggers": suspicion_triggers,
     }
 
 
@@ -218,16 +253,42 @@ def format_text_report(audit: Dict[str, Any]) -> str:
             lines.append("")
         if len(claims) > 10:
             lines.append(f"   ... and {len(claims) - 10} more claims in document.")
+    lines.append("-" * 80)
 
+    # Suspicion Trigger Section
+    lines.append("4. PERFORMANCE ANOMALY AUDIT (SUSPICION TRIGGERS)")
+    strigs = audit.get("suspicion_triggers", [])
+    if not strigs:
+        lines.append("   [PASS] No anomalous performance (>95%) detected.")
+    else:
+        for st in strigs:
+            lines.append(f"   [{st['severity']:17s}] {st['category']}")
+            lines.append(f"                      Metric : {st['metric_found']}")
+            lines.append(f"                      Quote  : \"{st['sentence']}\"")
+            lines.append(f"                      Finding: {st['finding']}")
+            lines.append(f"                      Action : {st['action']}")
     lines.append("=" * 80)
+
     lines.append("SUMMARY RECOMMENDATION FOR REVIEWER AGENT:")
     critical_leak = any(lr["severity"] == "CRITICAL" for lr in audit["leakage_risks"])
+    has_suspicion = len(strigs) > 0
     if critical_leak:
         lines.append("CRITICAL: Suspected data leakage detected. Must demand patient-level split confirmation.")
+    elif has_suspicion:
+        lines.append("ELEVATED SCRUTINY: Performance >95% detected. Freeze praise and mandate 11-point leakage/shortcut audit.")
     elif len(claims) > 0 and not vsum["has_adequate_variance"]:
         lines.append("MAJOR CONCERN: Multiple causal claims reported without seed variance or statistical tests.")
     else:
         lines.append("PROCEED: No fatal structural leakage detected; evaluate methodology and citations.")
+    lines.append("=" * 80)
+
+    lines.append("EPISTEMIC AXIOMS:")
+    lines.append("  * CANNOT VERIFY != FALSE")
+    lines.append("  * VERIFIED != TRUE")
+    lines.append("  * EXISTS != SUPPORTS CLAIM")
+    lines.append("  * HIGH ACCURACY != VALID EXPERIMENT")
+    lines.append("  * NO DETECTED ERROR != NO ERROR EXISTS")
+    lines.append("  * PLAUSIBLE != PROVEN")
     lines.append("=" * 80)
     return "\n".join(lines)
 

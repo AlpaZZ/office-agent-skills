@@ -57,6 +57,14 @@ class TestManuscriptAuditor(unittest.TestCase):
         audit = audit_manuscript(text_with_variance, filename="variance.txt")
         self.assertTrue(audit["variance_summary"]["has_adequate_variance"])
 
+    def test_suspicion_trigger_detection(self):
+        text = "Our proposed vision model achieved an accuracy of 99.4% on the test split."
+        audit = audit_manuscript(text, filename="anomaly.txt")
+        strigs = audit.get("suspicion_triggers", [])
+        self.assertGreaterEqual(len(strigs), 1)
+        self.assertEqual(strigs[0]["severity"], "CRITICAL_SCRUTINY")
+        self.assertIn("99.40%", strigs[0]["metric_found"])
+
 
 if __name__ == "__main__":
     unittest.main()

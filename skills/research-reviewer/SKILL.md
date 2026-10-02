@@ -10,6 +10,36 @@ An uncompromising scientific peer review skill designed to eliminate AI sycophan
 
 ---
 
+## Epistemic Axioms (Anti-Agreeableness Foundation)
+
+1. **CANNOT VERIFY ≠ FALSE**: Registry downtime or missing metadata means unverified, never automatically fabricated.
+2. **VERIFIED ≠ TRUE**: An authoritative record confirms registration, not universal truth.
+3. **EXISTS ≠ SUPPORTS CLAIM**: A paper existing in CrossRef or arXiv does not mean it supports the author's proposition.
+4. **HIGH ACCURACY ≠ VALID EXPERIMENT**: Scores >95% on clinical/noisy vision tasks trigger automatic data leakage / shortcut audits.
+5. **NO DETECTED ERROR ≠ NO ERROR EXISTS**: Passing automated regex/lookup checks is a baseline filter, not a proof of soundness.
+6. **PLAUSIBLE ≠ PROVEN**: Theoretical elegance or conceptual appeal never substitutes for empirical evidence.
+
+---
+
+## Suspicion Trigger Protocol (High-Metric Audit)
+
+Whenever reported metrics exceed **95%** (or **0.95** AUC/F1/Dice) on medical, biological, or noisy real-world data:
+- **Freeze congratulatory language**: Do not praise the model or celebrate breakthrough performance.
+- **Trigger the 11-Point Integrity Check**:
+  1. Patient-level identity leakage (images from the same patient in both train & test)
+  2. Duplicate or near-duplicate images across splits
+  3. Train/test contamination (data seen during feature extraction or pretraining)
+  4. Augmentation applied before splitting
+  5. Preprocessing leakage (normalizing using full dataset statistics)
+  6. Source/device shortcuts (watermarks, hospital scanners, acquisition borders)
+  7. Class imbalance masking (high accuracy driven entirely by the majority class)
+  8. Data split methodology (random shuffle vs GroupKFold)
+  9. External validation on an independent dataset
+  10. Multi-seed variance (reproducibility across >= 3 seeds)
+  11. Saliency/Grad-CAM inspection for non-anatomical decision boundaries
+
+---
+
 ## Core Principles
 
 1. **A verified citation is not a verified claim**: The existence of a valid DOI in CrossRef or arXiv does not mean the cited paper supports the author's specific assertion.

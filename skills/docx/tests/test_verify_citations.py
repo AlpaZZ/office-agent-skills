@@ -34,29 +34,48 @@ class TestCitationVerifier(unittest.TestCase):
     def test_titles_match(self):
         t1 = "Searching for MobileNetV3"
         t2 = "Searching for MobileNetV3"
-        matched, score = titles_match(t1, t2)
+        matched, score, reason = titles_match(t1, t2)
         self.assertTrue(matched)
         self.assertGreaterEqual(score, 0.9)
 
         # Mismatched titles
         t_fake = "The Art of Baking Sourdough Bread"
-        matched_fake, score_fake = titles_match(t1, t_fake)
+        matched_fake, score_fake, _ = titles_match(t1, t_fake)
         self.assertFalse(matched_fake)
         self.assertLess(score_fake, 0.6)
 
+        # Domain conflict: Skin Disease vs Lung Disease
+        t_skin = "Deep Learning for Skin Disease Classification"
+        t_lung = "Deep Learning for Lung Disease Classification"
+        matched_clash, score_clash, reason_clash = titles_match(t_skin, t_lung)
+        self.assertFalse(matched_clash)
+        self.assertIn("Contradictory domain tokens", reason_clash)
+
     def test_authors_match(self):
-        # String list with semicolon/comma
+        # First author match
         doc_authors = "Howard, Andrew; Sandler, Mark"
         registry_authors = ["Howard Andrew", "Sandler Mark", "Chen Bo"]
-        self.assertTrue(authors_match(doc_authors, registry_authors))
+        matched, detail = authors_match(doc_authors, registry_authors)
+        self.assertTrue(matched)
+        self.assertIn("matches", detail)
 
-        # Different authors
+        # Completely different authors
         fake_authors = "Smith, John; Doe, Jane"
-        self.assertFalse(authors_match(fake_authors, registry_authors))
+        matched_fake, detail_fake = authors_match(fake_authors, registry_authors)
+        self.assertFalse(matched_fake)
+        self.assertIn("mismatch", detail_fake.lower())
+
+        # Weak overlap (single generic surname match with different first author)
+        # Expected: Alice Smith, Bob Jones. Registry: Charlie Smith, David White.
+        # First author differs, only 1 surname overlap -> should NOT falsely match
+        weak_exp = "Alice Smith; Bob Jones"
+        weak_reg = ["Charlie Smith", "David White"]
+        matched_weak, detail_weak = authors_match(weak_exp, weak_reg)
+        self.assertFalse(matched_weak)
 
     def test_evaluate_identity(self):
-        # 1. Exact match
-        status, score, _ = evaluate_identity(
+        # 1. Exact match (Title, Author, Year all align)
+        overall, id_st, meta_st, score, details = evaluate_identity(
             expected_title="Searching for MobileNetV3",
             resolved_title="Searching for MobileNetV3",
             expected_authors="Howard, Andrew",
@@ -64,11 +83,37 @@ class TestCitationVerifier(unittest.TestCase):
             expected_year=2019,
             resolved_year=2019,
         )
-        self.assertEqual(status, "IDENTITY_CONFIRMED")
+        self.assertEqual(overall, "IDENTITY_CONFIRMED")
+        self.assertEqual(id_st, "RESOLVED")
+        self.assertEqual(meta_st, "MATCH")
         self.assertGreaterEqual(score, 0.9)
 
-        # 2. Borderline / mismatched authors
-        status_part, _, _ = evaluate_identity(
+        # 2. Epistemic honesty: Identifier resolved, but no in-document title or author provided
+        overall_unv, id_unv, meta_unv, _, det_unv = evaluate_identity(
+            expected_title="",
+            resolved_title="Searching for MobileNetV3",
+            expected_authors="",
+            resolved_authors=["Howard Andrew"],
+        )
+        self.assertEqual(overall_unv, "METADATA_UNVERIFIED")
+        self.assertEqual(id_unv, "RESOLVED")
+        self.assertEqual(meta_unv, "UNVERIFIED")
+        self.assertIn("no in-document title or author", det_unv)
+
+        # 3. Year discrepancy (>1 year diff even with matching title and author)
+        overall_yr, _, meta_yr, _, _ = evaluate_identity(
+            expected_title="Searching for MobileNetV3",
+            resolved_title="Searching for MobileNetV3",
+            expected_authors="Howard, Andrew",
+            resolved_authors=["Howard Andrew"],
+            expected_year=2019,
+            resolved_year=2025,
+        )
+        self.assertEqual(overall_yr, "METADATA_PARTIAL")
+        self.assertEqual(meta_yr, "PARTIAL")
+
+        # 4. Author discrepancy
+        overall_auth, _, meta_auth, _, _ = evaluate_identity(
             expected_title="Searching for MobileNetV3",
             resolved_title="Searching for MobileNetV3",
             expected_authors="Smith, John",
@@ -76,20 +121,22 @@ class TestCitationVerifier(unittest.TestCase):
             expected_year=2019,
             resolved_year=2019,
         )
-        self.assertEqual(status_part, "METADATA_PARTIAL")
+        self.assertEqual(overall_auth, "METADATA_PARTIAL")
+        self.assertEqual(meta_auth, "PARTIAL")
 
-        # 3. Completely different paper title
-        status_mismatch, _, _ = evaluate_identity(
+        # 5. Completely different paper title
+        overall_mismatch, _, meta_mismatch, _, _ = evaluate_identity(
             expected_title="A History of Roman Roads",
             resolved_title="Searching for MobileNetV3",
         )
-        self.assertEqual(status_mismatch, "METADATA_MISMATCH")
+        self.assertEqual(overall_mismatch, "METADATA_MISMATCH")
+        self.assertEqual(meta_mismatch, "MISMATCH")
 
     def test_scan_raw_text(self):
         sample = """
         Here is a paper with DOI: 10.1109/ICCV.2019.00140 and another link
         https://doi.org/10.1038/nature12373. Also check arXiv:2301.07041 and PMID: 25760077.
-        Finally ISBN: 978-0-13-468599-1.
+        Finally ISBN: 978-0-13-468599-1 and URL https://www.nature.com/articles/s41586-020-2649-2.
         """
         items = scan_raw_text(sample)
         types = {i["type"] for i in items}
@@ -99,18 +146,25 @@ class TestCitationVerifier(unittest.TestCase):
         self.assertIn("arXiv", types)
         self.assertIn("PMID", types)
         self.assertIn("ISBN", types)
+        self.assertIn("URL", types)
 
         self.assertIn("10.1109/ICCV.2019.00140", identifiers)
         self.assertIn("10.1038/nature12373", identifiers)
         self.assertIn("2301.07041", identifiers)
         self.assertIn("25760077", identifiers)
+        self.assertIn("https://www.nature.com/articles/s41586-020-2649-2", identifiers)
 
-    def test_extract_bibtex(self):
+    def test_extract_bibtex_multi_identifier(self):
+        import tempfile
+        from verify_citations import harvest_document_citations
+
         bib = """
         @article{mobilenet,
-            title = {Searching for MobileNetV3},
+            title = {Searching for {MobileNetV3}},
             author = {Howard, Andrew and Sandler, Mark},
             doi = {10.1109/ICCV.2019.00140},
+            pmid = {25760077},
+            eprint = {1905.02244},
             year = {2019}
         }
         @article{arxivpaper,
@@ -121,9 +175,26 @@ class TestCitationVerifier(unittest.TestCase):
         """
         entries = extract_from_bibtex(bib)
         self.assertEqual(len(entries), 2)
-        self.assertEqual(entries[0]["doi"], "10.1109/ICCV.2019.00140")
+        # Check brace removal for protected capitalization
         self.assertEqual(entries[0]["title"], "Searching for MobileNetV3")
-        self.assertEqual(entries[1]["eprint"], "2301.07041")
+        self.assertEqual(entries[0]["doi"], "10.1109/ICCV.2019.00140")
+        self.assertEqual(entries[0]["pmid"], "25760077")
+        self.assertEqual(entries[0]["eprint"], "1905.02244")
+
+        # Test harvest_document_citations expands all coexisting identifiers without elif skipping
+        with tempfile.NamedTemporaryFile("w", suffix=".bib", delete=False, encoding="utf-8") as tf:
+            tf.write(bib)
+            tpath = Path(tf.name)
+
+        try:
+            candidates = harvest_document_citations(tpath)
+            cand_types = {c["type"] for c in candidates if c.get("title") == "Searching for MobileNetV3"}
+            self.assertIn("DOI", cand_types)
+            self.assertIn("PMID", cand_types)
+            self.assertIn("arXiv", cand_types)
+        finally:
+            if tpath.exists():
+                tpath.unlink()
 
     def test_pmid_cache_title_verification(self):
         verifier = CitationVerifier(no_cache=False, timeout=10)
@@ -138,18 +209,36 @@ class TestCitationVerifier(unittest.TestCase):
     def test_live_crossref_verification(self):
         verifier = CitationVerifier(no_cache=True, timeout=10)
 
-        # 1. Real DOI
+        # 1. Real DOI with matching title
         res_real = verifier.verify_doi("10.1109/ICCV.2019.00140", expected_title="Searching for MobileNetV3")
         self.assertEqual(res_real["status"], "IDENTITY_CONFIRMED")
+        self.assertEqual(res_real["metadata_status"], "MATCH")
         self.assertIn("MobileNetV3", res_real["title"])
 
-        # 2. Fake / Hallucinated DOI
+        # 2. Real DOI without in-doc title (epistemic honesty: METADATA_UNVERIFIED)
+        res_no_title = verifier.verify_doi("10.1109/ICCV.2019.00140")
+        self.assertEqual(res_no_title["status"], "METADATA_UNVERIFIED")
+        self.assertEqual(res_no_title["identifier_status"], "RESOLVED")
+        self.assertEqual(res_no_title["metadata_status"], "UNVERIFIED")
+
+        # 3. Fake / Hallucinated DOI
         res_fake = verifier.verify_doi("10.9999/nonexistent.fake.doi.12345")
         self.assertEqual(res_fake["status"], "NOT_FOUND")
+        self.assertEqual(res_fake["identifier_status"], "NOT_FOUND")
 
-        # 3. Real DOI with Mismatched Title (detect hallucinated reference pairing)
+        # 4. Real DOI with Mismatched Title (detect hallucinated reference pairing)
         res_mismatch = verifier.verify_doi("10.1109/ICCV.2019.00140", expected_title="Deep Sea Fish Taxonomy")
         self.assertEqual(res_mismatch["status"], "METADATA_MISMATCH")
+        self.assertEqual(res_mismatch["metadata_status"], "MISMATCH")
+
+    def test_url_verification_status(self):
+        verifier = CitationVerifier(no_cache=True, timeout=5)
+        res = verifier.verify_url("https://www.google.com")
+        if res["status"] != "LOOKUP_ERROR":
+            # Accessible URL MUST be URL_ACCESSIBLE, never falsely IDENTITY_CONFIRMED
+            self.assertEqual(res["status"], "URL_ACCESSIBLE")
+            self.assertEqual(res["identifier_status"], "ACCESSIBLE")
+            self.assertEqual(res["metadata_status"], "UNVERIFIED")
 
 
 if __name__ == "__main__":
