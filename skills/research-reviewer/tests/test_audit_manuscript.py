@@ -74,7 +74,7 @@ class TestManuscriptAuditor(unittest.TestCase):
         """
         audit = audit_manuscript(text, filename="recsys_clean.txt")
         severities = [lr["severity"] for lr in audit["leakage_risks"]]
-        self.assertIn("PASS", severities)
+        self.assertIn("REPORTED_CLEAN", severities)
 
     def test_variance_reporting_detection(self):
         text_with_variance = "Model achieved 94.2% ± 0.4% accuracy over 5 random seeds."
@@ -86,7 +86,7 @@ class TestManuscriptAuditor(unittest.TestCase):
         audit = audit_manuscript(text, filename="anomaly_clf.txt")
         strigs = audit.get("suspicion_triggers", [])
         self.assertGreaterEqual(len(strigs), 1)
-        self.assertEqual(strigs[0]["severity"], "CRITICAL_SCRUTINY")
+        self.assertEqual(strigs[0]["severity"], "HIGH_METRIC_SCRUTINY")
         self.assertIn("99.40%", strigs[0]["metric_found"])
 
     def test_suspicion_trigger_regression_r2(self):
@@ -94,7 +94,7 @@ class TestManuscriptAuditor(unittest.TestCase):
         audit = audit_manuscript(text, filename="anomaly_reg.txt")
         strigs = audit.get("suspicion_triggers", [])
         self.assertGreaterEqual(len(strigs), 1)
-        self.assertEqual(strigs[0]["severity"], "CRITICAL_SCRUTINY")
+        self.assertEqual(strigs[0]["severity"], "HIGH_METRIC_SCRUTINY")
         self.assertIn("99.10%", strigs[0]["metric_found"])
 
 

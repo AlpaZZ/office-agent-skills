@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""audit_manuscript.py - Pre-review empirical auditor for academic manuscripts & theses.
+"""audit_manuscript.py - Pre-review empirical & methodology red-flag screener for academic manuscripts.
 
 Scans Word documents (.docx), Markdown (.md), LaTeX (.tex), and plain text to extract:
 1. Candidate empirical claims (causal, comparative, and superiority assertions).
 2. Reported metrics and numbers (flagging metrics reported without variance/seeds).
-3. Data leakage red flags (checking patient-level grouping in clinical/imaging datasets).
+3. Data leakage red flags (checking entity-level and temporal grouping cues).
 4. Class imbalance and metric adequacy red flags.
 
-Outputs a structured pre-review audit report to guide the research-reviewer agent.
+NOTE: This script is a heuristic pre-review screener. It analyzes text and manuscript structure
+for methodological red flags, but does not execute code or inspect dataset tensors directly.
+Findings marked 'REPORTED_CLEAN' indicate that the text describes sound splitting protocols,
+which must still be verified against actual code pipelines.
 """
+
 
 import argparse
 import json
@@ -149,10 +153,10 @@ def audit_manuscript(text: str, filename: str = "manuscript") -> Dict[str, Any]:
             })
         else:
             leakage_risks.append({
-                "severity": "PASS",
+                "severity": "REPORTED_CLEAN",
                 "category": "Entity-Level Grouping",
-                "finding": "Document explicitly mentions entity/subject grouping in data partition (GroupKFold or entity IDs specified).",
-                "action": "Verify splitting implementation in code.",
+                "finding": "Document specifies entity/subject grouping in data partition (GroupKFold or entity IDs specified).",
+                "action": "Heuristic match in text; verify splitting implementation in code.",
             })
 
     if is_temporal_domain:
@@ -165,10 +169,10 @@ def audit_manuscript(text: str, filename: str = "manuscript") -> Dict[str, Any]:
             })
         elif has_temporal_grouping:
             leakage_risks.append({
-                "severity": "PASS",
+                "severity": "REPORTED_CLEAN",
                 "category": "Temporal Order Preservation",
-                "finding": "Document explicitly specifies chronological or temporal forward-chaining split.",
-                "action": "Verify out-of-time test cutoff in code.",
+                "finding": "Document specifies chronological or temporal forward-chaining split.",
+                "action": "Heuristic match in text; verify out-of-time test cutoff in code.",
             })
 
     # 3. Class Imbalance & Metric Gaming Check
@@ -197,7 +201,7 @@ def audit_manuscript(text: str, filename: str = "manuscript") -> Dict[str, Any]:
         "has_adequate_variance": (total_variance_found > 0 and total_variance_found >= max(1, total_metrics_found // 3)),
     }
 
-    # 5. Suspicion Trigger (Performance Anomaly Audit)
+    # 5. Scrutiny Trigger (Performance Anomaly Investigation)
     # Triggered when empirical performance is unusually extreme in noisy real-world domains.
     suspicion_triggers = []
     high_metric_pat = re.compile(
@@ -213,19 +217,18 @@ def audit_manuscript(text: str, filename: str = "manuscript") -> Dict[str, Any]:
                 val_pct = val if (is_pct or val > 1.0) else val * 100.0
                 if 95.0 <= val_pct <= 100.0:
                     suspicion_triggers.append({
-                        "severity": "CRITICAL_SCRUTINY",
+                        "severity": "HIGH_METRIC_SCRUTINY",
                         "metric_found": f"{val_pct:.2f}%",
                         "sentence": s,
-                        "category": "Performance Anomaly (>95%) - Epistemic Suspicion Trigger",
-                        "finding": f"Reported metric of {val_pct:.2f}% is exceptionally high for noisy empirical/real-world data.",
+                        "category": "High-Metric Scrutiny Trigger (>95%)",
+                        "finding": f"Reported metric of {val_pct:.2f}% warrants contextual investigation based on task difficulty.",
                         "action": (
-                            "DO NOT PRAISE YET. Near-perfect performance in empirical/noisy environments "
-                            "is overwhelmingly a symptom of leakage, lookahead bias, or confounding. "
-                            "Audit: (1) Entity/group identity leakage, (2) Target/outcome bleed, "
-                            "(3) Temporal lookahead, (4) Preprocessing/feature selection leakage, "
-                            "(5) Benchmark/train-test contamination, (6) Spurious shortcuts/artifacts, "
-                            "(7) Class imbalance gaming, (8) Baseline tuning fairness, "
-                            "(9) External validation, (10) Multi-seed variance."
+                            "Calibrate scrutiny to task difficulty. If evaluating a toy/saturated benchmark (e.g. MNIST), "
+                            "high metrics are expected; inspect baseline fairness. If evaluating a noisy/complex empirical "
+                            "task (clinical imaging, tabular forecasting, unconstrained NLP), freeze praise and rigorously audit: "
+                            "(1) Entity/group identity leakage, (2) Target/outcome bleed, (3) Temporal lookahead, "
+                            "(4) Preprocessing/feature selection leakage, (5) Benchmark contamination, (6) Confounders/shortcuts, "
+                            "(7) Class imbalance gaming, (8) Baseline tuning fairness, (9) External validation, (10) Multi-seed variance."
                         ),
                     })
                     break
@@ -247,7 +250,8 @@ def format_text_report(audit: Dict[str, Any]) -> str:
     """Format audit results as safe ASCII terminal report."""
     lines = []
     lines.append("=" * 80)
-    lines.append(f"PRE-REVIEW EMPIRICAL AUDIT REPORT: {audit['filename']}")
+    lines.append(f"PRE-REVIEW EMPIRICAL RED-FLAG SCREENER REPORT: {audit['filename']}")
+    lines.append("Note: Heuristic text screening only. Code & data pipelines must be audited.")
     lines.append("=" * 80)
 
     # Leakage Section
@@ -256,9 +260,9 @@ def format_text_report(audit: Dict[str, Any]) -> str:
         lines.append("   [INFO] No domain-specific identity or temporal leakage red flags triggered.")
     for lr in audit["leakage_risks"]:
         sev = lr["severity"]
-        lines.append(f"   [{sev:8s}] {lr['category']}")
-        lines.append(f"              Finding: {lr['finding']}")
-        lines.append(f"              Action : {lr['action']}")
+        lines.append(f"   [{sev:14s}] {lr['category']}")
+        lines.append(f"                   Finding: {lr['finding']}")
+        lines.append(f"                   Action : {lr['action']}")
     lines.append("-" * 80)
 
     # Metric & Variance Section
@@ -273,12 +277,12 @@ def format_text_report(audit: Dict[str, Any]) -> str:
     elif not vsum["has_adequate_variance"]:
         lines.append("   [WARN] Most metrics appear to be single-run without adequate error bars (+- std).")
     else:
-        lines.append("   [PASS] Variance indicators detected across reported figures.")
+        lines.append("   [REPORTED] Variance indicators detected across reported figures.")
 
     for mr in audit["metric_risks"]:
-        lines.append(f"   [{mr['severity']:8s}] {mr['category']}")
-        lines.append(f"              Finding: {mr['finding']}")
-        lines.append(f"              Action : {mr['action']}")
+        lines.append(f"   [{mr['severity']:14s}] {mr['category']}")
+        lines.append(f"                   Finding: {mr['finding']}")
+        lines.append(f"                   Action : {mr['action']}")
     lines.append("-" * 80)
 
     # Claims Section
@@ -297,17 +301,17 @@ def format_text_report(audit: Dict[str, Any]) -> str:
     lines.append("-" * 80)
 
     # Suspicion Trigger Section
-    lines.append("4. PERFORMANCE ANOMALY AUDIT (SUSPICION TRIGGERS)")
+    lines.append("4. HIGH-METRIC SCRUTINY AUDIT (ANOMALY INVESTIGATION)")
     strigs = audit.get("suspicion_triggers", [])
     if not strigs:
-        lines.append("   [PASS] No anomalous performance (>95%) detected.")
+        lines.append("   [INFO] No extreme performance metrics (>95%) detected.")
     else:
         for st in strigs:
-            lines.append(f"   [{st['severity']:17s}] {st['category']}")
-            lines.append(f"                      Metric : {st['metric_found']}")
-            lines.append(f"                      Quote  : \"{st['sentence']}\"")
-            lines.append(f"                      Finding: {st['finding']}")
-            lines.append(f"                      Action : {st['action']}")
+            lines.append(f"   [{st['severity']:20s}] {st['category']}")
+            lines.append(f"                           Metric : {st['metric_found']}")
+            lines.append(f"                           Quote  : \"{st['sentence']}\"")
+            lines.append(f"                           Finding: {st['finding']}")
+            lines.append(f"                           Action : {st['action']}")
     lines.append("=" * 80)
 
     lines.append("SUMMARY RECOMMENDATION FOR REVIEWER AGENT:")
@@ -316,19 +320,19 @@ def format_text_report(audit: Dict[str, Any]) -> str:
     if critical_leak:
         lines.append("CRITICAL: Suspected data leakage detected. Must demand entity-level grouped split or temporal ordering verification.")
     elif has_suspicion:
-        lines.append("ELEVATED SCRUTINY: Performance >95% detected. Freeze praise and mandate empirical leakage/confounder audit.")
+        lines.append("ELEVATED SCRUTINY: Performance >95% detected. Contextualize against task difficulty and audit leakage boundaries.")
     elif len(claims) > 0 and not vsum["has_adequate_variance"]:
         lines.append("MAJOR CONCERN: Multiple causal claims reported without seed variance or statistical tests.")
     else:
-        lines.append("PROCEED: No fatal structural leakage detected; evaluate methodology and citations.")
+        lines.append("PROCEED: No fatal text-level leakage red flags detected. Proceed to substantive methodology, citation, and code audit.")
     lines.append("=" * 80)
 
     lines.append("EPISTEMIC AXIOMS:")
     lines.append("  * CANNOT VERIFY != FALSE")
     lines.append("  * VERIFIED != TRUE")
     lines.append("  * EXISTS != SUPPORTS CLAIM")
-    lines.append("  * NEAR-PERFECT METRIC != SOUND METHOD")
-    lines.append("  * NO DETECTED ERROR != NO ERROR EXISTS")
+    lines.append("  * NEAR-PERFECT METRIC != SOUND METHOD (HIGH METRIC != AUTOMATIC FRAUD)")
+    lines.append("  * NO DETECTED ERROR != NO ERROR EXISTS (HEURISTIC SCREENER != RUNTIME PROOF)")
     lines.append("  * PLAUSIBLE != PROVEN")
     lines.append("=" * 80)
     return "\n".join(lines)

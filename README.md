@@ -36,11 +36,11 @@ The `skills/` directory contains eight skills:
 - **Epistemic Boundary**: Enforces the principle that *identifier resolution confirms paper existence in a registry, but does not determine whether the cited source supports the author's claims* (for claim validity, delegate to `research-reviewer`).
 
 ### Scientific Peer Review & Empirical Methodology Audit
-- **Claim-Evidence Mapping**: Evaluates empirical assertions against reported data tables and assigns categorical epistemic status (`[FACT]`, `[SUPPORTED INFERENCE]`, `[PLAUSIBLE INFERENCE]`, `[UNSUPPORTED]`, `[CONTRADICTED]`).
-- **Empirical Leakage & Confounder Audit**: Detects entity-level identity leakage (`GroupKFold`), temporal lookahead in time series, target proxy bleed in tabular models, benchmark contamination, and metric gaming on skewed data.
-- **Universal Devil's Advocate**: Formulates four rival hypotheses (capacity/resource confounds, tuning disparities, spurious shortcuts, and stochastic flukes) to eliminate AI agreeableness and challenge unsupported claims.
-- **Empirical Suspicion Triggers**: Automatically activates heightened scrutiny when reported metrics appear suspiciously extreme ($R^2 > 0.98$, accuracy/AUC $> 95\%$, or massive unexplained speedup).
-- **Self-Improving Lessons**: Tracks methodological review errors in `LESSONS.md` to prevent recurring oversights.
+- **Claim-Evidence Mapping**: Evaluates empirical assertions against reported data tables and assigns categorical epistemic status (`[FACT]`, `[SUPPORTED INFERENCE]`, `[PLAUSIBLE INFERENCE]`, `[HYPOTHESIS]`, `[INSUFFICIENT_EVIDENCE]`, `[NOT_ASSESSED]`, `[UNSUPPORTED]`, `[CONTRADICTED]`).
+- **Empirical Leakage & Confounder Screening**: Screens entity-level identity leakage (`GroupKFold`), temporal lookahead in time series, target proxy bleed in tabular models, benchmark contamination, and metric gaming on skewed data.
+- **Universal Devil's Advocate**: Formulates four rival hypotheses (capacity/resource confounds, tuning disparities, spurious shortcuts, and stochastic flukes) to eliminate AI agreeableness without descending into ungrounded paranoia.
+- **Contextual Scrutiny Protocol**: Investigates surprisingly high metrics ($R^2 > 0.98$, accuracy/AUC $> 95\%$, or massive speedups) in the context of task difficulty, baseline comparisons, and leakage boundaries.
+- **Curated Empirical Lessons**: Human-curated lessons repository with a proposal gate (`LESSON_PROPOSALS.md`) to prevent self-reinforcing bias drift.
 
 ### Corporate Template Enforcement
 - Extracts font families, theme palettes, and master layouts from `.dotx`, `.potx`, or `.xltx` files into reusable Brand Profiles.
@@ -92,7 +92,7 @@ done
 
 ### 1. Peer Review a Manuscript or Thesis Chapter
 ```bash
-# Pre-review automated audit for claims and data leakage
+# Pre-review automated red-flag screening for claims and data leakage
 python skills/research-reviewer/scripts/audit_manuscript.py manuscript.docx
 
 # In your agent chat, invoke full scientific peer review:
