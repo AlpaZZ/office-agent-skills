@@ -13,7 +13,7 @@ from PIL import Image, ImageFilter
 
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-from audit_layout import DocumentLayoutAuditor, calculate_blur_variance, PROFILES
+from audit_layout import DocumentLayoutAuditor, calculate_blur_variance, extract_profile_from_template, PROFILES
 
 
 class TestLayoutAuditor(unittest.TestCase):
@@ -63,6 +63,40 @@ class TestLayoutAuditor(unittest.TestCase):
         self.assertEqual(skripsi["margin_right_cm"], 3.0)
         self.assertEqual(skripsi["margin_bottom_cm"], 3.0)
 
+    def test_template_extraction(self):
+        # Create a mock template docx in memory
+        bio = io.BytesIO()
+        with zipfile.ZipFile(bio, "w") as zf:
+            doc_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                <w:body>
+                    <w:p><w:r><w:t>Template text</w:t></w:r></w:p>
+                    <w:sectPr>
+                        <w:pgMar w:top="1701" w:right="1701" w:bottom="1701" w:left="1701"/>
+                        <w:pgSz w:w="11906" w:h="16838"/>
+                        <w:cols w:num="2" w:space="396"/>
+                    </w:sectPr>
+                </w:body>
+            </w:document>
+            """
+            zf.writestr("word/document.xml", doc_xml)
+        
+        bio.seek(0)
+        temp_path = Path("test_mock_template.docx").resolve()
+        with open(temp_path, "wb") as f:
+            f.write(bio.read())
+
+        try:
+            profile = extract_profile_from_template(str(temp_path))
+            self.assertEqual(profile["margin_top_cm"], 3.0)
+            self.assertEqual(profile["margin_left_cm"], 3.0)
+            self.assertEqual(profile["expected_columns"], 2)
+            self.assertEqual(profile["paper_size"], "A4")
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()
+

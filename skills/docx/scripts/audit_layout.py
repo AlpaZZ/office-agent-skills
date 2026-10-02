@@ -21,6 +21,7 @@ Usage:
 """
 
 import argparse
+import copy
 import io
 import json
 import math
@@ -157,11 +158,127 @@ def calculate_blur_variance(pil_img: Image.Image) -> float:
         return -1.0
 
 
+def extract_profile_from_template(template_path: str) -> Dict[str, Any]:
+    """Extract layout rules, margins, fonts, line spacing, and column count directly from a template .docx/.dotx."""
+    tpath = Path(template_path).resolve()
+    if not tpath.exists():
+        raise FileNotFoundError(f"Template file not found: {tpath}")
+
+    with zipfile.ZipFile(tpath, "r") as zf:
+        if "word/document.xml" not in zf.namelist():
+            raise ValueError("Invalid template: word/document.xml not found")
+
+        doc_tree = ET.fromstring(zf.read("word/document.xml"))
+        styles_tree = ET.fromstring(zf.read("word/styles.xml")) if "word/styles.xml" in zf.namelist() else None
+
+        # 1. Margins & Paper Size
+        sect = doc_tree.find(f".//{{{NS['w']}}}sectPr")
+        margin_top = 3.0
+        margin_bottom = 3.0
+        margin_left = 3.0
+        margin_right = 3.0
+        width_cm = 21.0
+        height_cm = 29.7
+        columns = 1
+
+        if sect is not None:
+            pgMar = sect.find(f"{{{NS['w']}}}pgMar")
+            if pgMar is not None:
+                margin_top = float(pgMar.attrib.get(f"{{{NS['w']}}}top", "1701")) / TWIPS_PER_CM
+                margin_bottom = float(pgMar.attrib.get(f"{{{NS['w']}}}bottom", "1701")) / TWIPS_PER_CM
+                margin_left = float(pgMar.attrib.get(f"{{{NS['w']}}}left", "1701")) / TWIPS_PER_CM
+                margin_right = float(pgMar.attrib.get(f"{{{NS['w']}}}right", "1701")) / TWIPS_PER_CM
+
+            pgSz = sect.find(f"{{{NS['w']}}}pgSz")
+            if pgSz is not None:
+                width_cm = float(pgSz.attrib.get(f"{{{NS['w']}}}w", "11906")) / TWIPS_PER_CM
+                height_cm = float(pgSz.attrib.get(f"{{{NS['w']}}}h", "16838")) / TWIPS_PER_CM
+
+            # Check if any section has 2 columns
+            all_sects = doc_tree.findall(f".//{{{NS['w']}}}sectPr")
+            for s in all_sects:
+                cols_elem = s.find(f"{{{NS['w']}}}cols")
+                if cols_elem is not None:
+                    cnum = int(cols_elem.attrib.get(f"{{{NS['w']}}}num", "1"))
+                    if cnum > 1:
+                        columns = cnum
+                        break
+
+        # 2. Fonts & Line Spacing
+        default_font = "Times New Roman"
+        body_size = 12.0
+        line_spacing = [1.5]
+
+        if styles_tree is not None:
+            for s in styles_tree.findall(f".//{{{NS['w']}}}style"):
+                if s.attrib.get(f"{{{NS['w']}}}styleId") == "Normal":
+                    rFonts = s.find(f".//{{{NS['w']}}}rFonts")
+                    if rFonts is not None:
+                        default_font = rFonts.attrib.get(f"{{{NS['w']}}}ascii") or rFonts.attrib.get(f"{{{NS['w']}}}hAnsi") or default_font
+                    sz = s.find(f".//{{{NS['w']}}}sz")
+                    if sz is not None and sz.attrib.get(f"{{{NS['w']}}}val", "").isdigit():
+                        body_size = float(sz.attrib.get(f"{{{NS['w']}}}val")) / 2.0
+                    spacing = s.find(f".//{{{NS['w']}}}spacing")
+                    if spacing is not None and spacing.attrib.get(f"{{{NS['w']}}}line", "").isdigit():
+                        line_spacing = [round(float(spacing.attrib.get(f"{{{NS['w']}}}line")) / 240.0, 1)]
+                    break
+
+        paper_size_label = "A4" if abs(width_cm - 21.0) < 0.5 and abs(height_cm - 29.7) < 0.5 else "Letter"
+
+        return {
+            "name": f"Template: {tpath.name}",
+            "paper_size": paper_size_label,
+            "paper_width_cm": round(width_cm, 2),
+            "paper_height_cm": round(height_cm, 2),
+            "margin_top_cm": round(margin_top, 2),
+            "margin_bottom_cm": round(margin_bottom, 2),
+            "margin_left_cm": round(margin_left, 2),
+            "margin_right_cm": round(margin_right, 2),
+            "margin_tolerance_cm": 0.25,
+            "expected_columns": columns,
+            "font_family": [default_font],
+            "body_font_size_pt": body_size,
+            "heading1_font_size_pt": 14.0,
+            "heading2_font_size_pt": 12.0,
+            "table_font_size_pt": [8.0, 9.0, 10.0, 11.0, 12.0],
+            "caption_font_size_pt": [8.0, 9.0, 10.0, 11.0, 12.0],
+            "line_spacing": line_spacing,
+            "body_alignment": "both",
+            "table_caption_position": "above",
+            "figure_caption_position": "below",
+            "min_image_dpi": 200.0,
+            "preferred_image_dpi": 300.0,
+            "require_toc": (False if columns > 1 else True),
+            "require_table_list": False,
+            "require_figure_list": False,
+            "academic_table_borders": True,
+        }
+
+
 class DocumentLayoutAuditor:
-    def __init__(self, docx_path: str, profile_name: str = "skripsi-id"):
+    def __init__(
+        self,
+        docx_path: str,
+        profile_name: str = "skripsi-id",
+        custom_profile: Optional[Dict[str, Any]] = None,
+        overrides: Optional[Dict[str, Any]] = None,
+    ):
         self.docx_path = Path(docx_path).resolve()
         self.profile_name = profile_name
-        self.profile = PROFILES.get(profile_name, PROFILES["skripsi-id"])
+
+        if custom_profile:
+            self.profile = custom_profile
+            self.profile_name = custom_profile.get("name", "Custom Profile")
+        elif profile_name in PROFILES:
+            self.profile = copy.deepcopy(PROFILES[profile_name])
+        else:
+            self.profile = copy.deepcopy(PROFILES["general"])
+
+        # Apply any user overrides
+        if overrides:
+            for k, v in overrides.items():
+                if v is not None:
+                    self.profile[k] = v
         
         self.findings = []
         self.doc_tree = None
@@ -610,21 +727,24 @@ class DocumentLayoutAuditor:
                     if not next_is_caption and prev_is_caption:
                         misplaced_figure_captions += 1
 
-        if misplaced_table_captions > 0:
+        exp_table_pos = self.profile.get("table_caption_position", "above")
+        exp_fig_pos = self.profile.get("figure_caption_position", "below")
+
+        if exp_table_pos == "above" and misplaced_table_captions > 0:
             self.findings.append({
                 "category": "Captions / Table Placement",
                 "severity": "FAIL",
                 "title": f"Posisi Caption Tabel Salah ({misplaced_table_captions} caption di bawah tabel)",
-                "detail": "Standar publikasi & skripsi mewajibkan judul/caption tabel berada di ATAS tabel, bukan di bawah tabel!",
+                "detail": "Standar naskah mewajibkan judul/caption tabel berada di ATAS tabel, bukan di bawah tabel!",
                 "remediation": "Pindahkan paragraf caption tabel tepat di atas tabel bersangkutan.",
             })
 
-        if misplaced_figure_captions > 0:
+        if exp_fig_pos == "below" and misplaced_figure_captions > 0:
             self.findings.append({
                 "category": "Captions / Figure Placement",
                 "severity": "FAIL",
                 "title": f"Posisi Caption Gambar Salah ({misplaced_figure_captions} caption di atas gambar)",
-                "detail": "Standar publikasi & skripsi mewajibkan caption gambar berada di BAWAH gambar, bukan di atas gambar!",
+                "detail": "Standar naskah mewajibkan caption gambar berada di BAWAH gambar, bukan di atas gambar!",
                 "remediation": "Pindahkan paragraf caption gambar tepat di bawah gambar bersangkutan.",
             })
 
@@ -635,6 +755,24 @@ class DocumentLayoutAuditor:
                 "title": "Daftar Isi Otomatis (Table of Contents) Belum Ada",
                 "detail": "Format naskah mensyaratkan Daftar Isi otomatis melalui field TOC Word.",
                 "remediation": "Posisikan kursor pada halaman Daftar Isi, buka tab References -> Table of Contents -> Automatic Table.",
+            })
+
+        if self.profile.get("require_table_list") and not has_table_list:
+            self.findings.append({
+                "category": "References / List of Tables",
+                "severity": "FAIL",
+                "title": "Daftar Tabel Otomatis Belum Terdeteksi",
+                "detail": "Format naskah mensyaratkan Daftar Tabel otomatis (TOC \\c \"Tabel\").",
+                "remediation": "Posisikan kursor pada halaman Daftar Tabel, buka tab References -> Insert Table of Figures -> Caption label: Tabel.",
+            })
+
+        if self.profile.get("require_figure_list") and not has_figure_list:
+            self.findings.append({
+                "category": "References / List of Figures",
+                "severity": "FAIL",
+                "title": "Daftar Gambar Otomatis Belum Terdeteksi",
+                "detail": "Format naskah mensyaratkan Daftar Gambar otomatis (TOC \\c \"Gambar\").",
+                "remediation": "Posisikan kursor pada halaman Daftar Gambar, buka tab References -> Insert Table of Figures -> Caption label: Gambar.",
             })
 
         return {
@@ -1005,11 +1143,122 @@ def main():
         default="skripsi-id",
         help="Target publication profile (default: skripsi-id)",
     )
+    parser.add_argument(
+        "--template",
+        help="Path to a reference template (.docx/.dotx) to automatically extract formatting rules (margins, fonts, columns)",
+    )
+    parser.add_argument(
+        "--config",
+        help="Path to a custom JSON profile configuration file",
+    )
+    parser.add_argument(
+        "--margins",
+        nargs=4,
+        type=float,
+        metavar=("TOP", "BOTTOM", "LEFT", "RIGHT"),
+        help="Override target margins in cm, e.g. --margins 4.0 3.0 4.0 3.0 or --margins 2.54 2.54 2.54 2.54",
+    )
+    parser.add_argument(
+        "--font",
+        help="Override expected font family (e.g. --font Arial or --font 'Times New Roman')",
+    )
+    parser.add_argument(
+        "--line-spacing",
+        nargs="+",
+        type=float,
+        help="Override expected line spacing multipliers, e.g. --line-spacing 1.5 2.0",
+    )
+    parser.add_argument(
+        "--columns",
+        type=int,
+        choices=[1, 2],
+        help="Override expected column count in body sections (1 or 2)",
+    )
+    parser.add_argument(
+        "--table-caption",
+        choices=["above", "below", "any"],
+        help="Target table caption placement (above, below, or any)",
+    )
+    parser.add_argument(
+        "--figure-caption",
+        choices=["below", "above", "any"],
+        help="Target figure caption placement (below, above, or any)",
+    )
+    parser.add_argument(
+        "--require-toc",
+        action="store_true",
+        default=None,
+        help="Mandate presence of an automatic Table of Contents",
+    )
+    parser.add_argument(
+        "--no-toc",
+        dest="require_toc",
+        action="store_false",
+        help="Do not require a Table of Contents",
+    )
+    parser.add_argument(
+        "--require-table-list",
+        action="store_true",
+        default=None,
+        help="Mandate presence of an automatic List of Tables",
+    )
+    parser.add_argument(
+        "--require-figure-list",
+        action="store_true",
+        default=None,
+        help="Mandate presence of an automatic List of Figures",
+    )
+    parser.add_argument(
+        "--min-dpi",
+        type=float,
+        help="Minimum image DPI threshold (default: 200.0)",
+    )
     parser.add_argument("-o", "--output", help="Output report file path (.txt or .json)")
     parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format (default: text)")
 
     args = parser.parse_args()
-    auditor = DocumentLayoutAuditor(args.docx_path, profile_name=args.profile)
+
+    # Determine base profile
+    custom_profile = None
+    if args.template:
+        custom_profile = extract_profile_from_template(args.template)
+    elif args.config:
+        with open(args.config, "r", encoding="utf-8") as f:
+            custom_profile = json.load(f)
+
+    # Build overrides
+    overrides = {}
+    if args.margins:
+        top_cm, bottom_cm, left_cm, right_cm = args.margins
+        overrides["margin_top_cm"] = top_cm
+        overrides["margin_bottom_cm"] = bottom_cm
+        overrides["margin_left_cm"] = left_cm
+        overrides["margin_right_cm"] = right_cm
+    if args.font:
+        overrides["font_family"] = [args.font]
+    if args.line_spacing:
+        overrides["line_spacing"] = args.line_spacing
+    if args.columns:
+        overrides["expected_columns"] = args.columns
+    if args.table_caption:
+        overrides["table_caption_position"] = args.table_caption
+    if args.figure_caption:
+        overrides["figure_caption_position"] = args.figure_caption
+    if args.require_toc is not None:
+        overrides["require_toc"] = args.require_toc
+    if args.require_table_list is not None:
+        overrides["require_table_list"] = args.require_table_list
+    if args.require_figure_list is not None:
+        overrides["require_figure_list"] = args.require_figure_list
+    if args.min_dpi:
+        overrides["min_image_dpi"] = args.min_dpi
+
+    auditor = DocumentLayoutAuditor(
+        args.docx_path,
+        profile_name=args.profile,
+        custom_profile=custom_profile,
+        overrides=overrides,
+    )
     audit = auditor.audit()
 
     if args.format == "json":
