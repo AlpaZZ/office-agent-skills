@@ -38,15 +38,30 @@ VARIANCE_PATTERNS = [
     re.compile(r"\b(?:std|std dev|standard deviation|confidence interval|95%\s*CI)\b", re.IGNORECASE),
 ]
 
-MEDICAL_IMAGING_KEYWORDS = [
-    "fundus", "retina", "retinopathy", "chest", "x-ray", "radiograph",
-    "ct scan", "mri", "dermoscopy", "skin lesion", "histopathology",
-    "patient", "clinical", "hospital", "ultrasound", "biopsy"
+# Multi-domain entity grouping cues (Clinical, Behavioral/Users, Organizations, Devices)
+ENTITY_GROUPING_DOMAINS = [
+    # Clinical / Biological
+    "patient", "clinical", "hospital", "subject", "retina", "fundus", "chest", "x-ray", "radiograph",
+    "ct scan", "mri", "dermoscopy", "skin lesion", "histopathology", "ultrasound", "biopsy",
+    # User / Behavioral / Financial / Systems
+    "user", "client", "customer", "student", "household", "account", "participant", "sensor", "station", "device", "school", "firm",
 ]
 
-PATIENT_GROUPING_KEYWORDS = [
-    "patient_id", "patient id", "subject_id", "subject id", "groupkfold",
-    "stratifiedgroupkfold", "patient-level", "subject-level", "per-patient"
+ENTITY_GROUPING_KEYWORDS = [
+    "patient_id", "patient id", "subject_id", "subject id", "user_id", "user id",
+    "client_id", "customer_id", "device_id", "school_id", "entity_id",
+    "groupkfold", "stratifiedgroupkfold", "group k-fold", "grouped split",
+    "leave-one-group-out", "patient-level", "subject-level", "user-level", "per-patient", "per-subject"
+]
+
+TEMPORAL_DOMAINS = [
+    "time series", "time-series", "forecasting", "temporal", "sequential", "stock", "crypto",
+    "energy demand", "sensor stream", "longitudinal", "traffic flow", "weather forecast"
+]
+
+TEMPORAL_GROUPING_KEYWORDS = [
+    "timeseriessplit", "temporal split", "chronological", "rolling window",
+    "expanding window", "walk-forward", "walk forward", "out-of-time", "oot split"
 ]
 
 
@@ -115,26 +130,45 @@ def audit_manuscript(text: str, filename: str = "manuscript") -> Dict[str, Any]:
                 "suggested_status": status,
             })
 
-    # 2. Leakage & Domain Audit
-    is_medical_domain = any(k in lower_text for k in MEDICAL_IMAGING_KEYWORDS)
-    has_patient_grouping = any(k in lower_text for k in PATIENT_GROUPING_KEYWORDS)
-    has_image_split_cue = bool(re.search(r"\b(?:80/20|70/30|70/15/15|random split|train_test_split)\b", lower_text))
+    # 2. Leakage & Domain Partition Audit
+    is_entity_domain = any(k in lower_text for k in ENTITY_GROUPING_DOMAINS)
+    has_entity_grouping = any(k in lower_text for k in ENTITY_GROUPING_KEYWORDS)
+    has_random_split_cue = bool(re.search(r"\b(?:80/20|70/30|70/15/15|random split|train_test_split|randomly partitioned)\b", lower_text))
+
+    is_temporal_domain = any(k in lower_text for k in TEMPORAL_DOMAINS)
+    has_temporal_grouping = any(k in lower_text for k in TEMPORAL_GROUPING_KEYWORDS)
 
     leakage_risks = []
-    if is_medical_domain:
-        if not has_patient_grouping:
+    if is_entity_domain:
+        if not has_entity_grouping:
             leakage_risks.append({
                 "severity": "CRITICAL",
-                "category": "Patient-Level Identity Leakage",
-                "finding": "Medical/clinical domain detected, but no mention of patient-level grouping (GroupKFold or patient_id). High risk of left/right eye or multi-visit patient leakage into test set.",
-                "action": "Demand verification that train and test splits do not share images from the same patient.",
+                "category": "Entity / Subject Identity Leakage",
+                "finding": "Repeated entity domain detected (e.g. subjects, users, patients, or devices), but no grouped partitioning (GroupKFold or entity ID) was specified. High risk of multi-sample identity leakage between train and test partitions.",
+                "action": "Demand verification that train and test splits do not share records from the same entity/subject.",
             })
         else:
             leakage_risks.append({
                 "severity": "PASS",
-                "category": "Patient-Level Grouping",
-                "finding": "Document explicitly mentions subject/patient grouping in data partition.",
+                "category": "Entity-Level Grouping",
+                "finding": "Document explicitly mentions entity/subject grouping in data partition (GroupKFold or entity IDs specified).",
                 "action": "Verify splitting implementation in code.",
+            })
+
+    if is_temporal_domain:
+        if not has_temporal_grouping and (has_random_split_cue or "k-fold" in lower_text):
+            leakage_risks.append({
+                "severity": "CRITICAL",
+                "category": "Temporal Lookahead Bias",
+                "finding": "Time-series or sequential domain detected, but data split appears random rather than chronological. High risk of future data leaking into past predictions.",
+                "action": "Enforce strict forward-chaining chronological split (TimeSeriesSplit or walk-forward validation).",
+            })
+        elif has_temporal_grouping:
+            leakage_risks.append({
+                "severity": "PASS",
+                "category": "Temporal Order Preservation",
+                "finding": "Document explicitly specifies chronological or temporal forward-chaining split.",
+                "action": "Verify out-of-time test cutoff in code.",
             })
 
     # 3. Class Imbalance & Metric Gaming Check
@@ -162,10 +196,10 @@ def audit_manuscript(text: str, filename: str = "manuscript") -> Dict[str, Any]:
     }
 
     # 5. Suspicion Trigger (Performance Anomaly Audit)
-    # Triggered when performance exceeds 95% on complex or medical imaging tasks.
+    # Triggered when empirical performance is unusually extreme in noisy real-world domains.
     suspicion_triggers = []
     high_metric_pat = re.compile(
-        r"\b(?:accuracy|auc|f1|sensitivity|specificity|precision|recall|dice)\b[^\.\n\?!]*?([0-9]{1,3}(?:\.[0-9]+)?)\s*(%|percent)?",
+        r"\b(?:accuracy|auc|f1|sensitivity|specificity|precision|recall|dice|r2|r-squared|r\^2)\b[^\.\n\?!]*?([0-9]{1,3}(?:\.[0-9]+)?)\s*(%|percent)?",
         re.IGNORECASE,
     )
     for s in sentences:
@@ -181,14 +215,15 @@ def audit_manuscript(text: str, filename: str = "manuscript") -> Dict[str, Any]:
                         "metric_found": f"{val_pct:.2f}%",
                         "sentence": s,
                         "category": "Performance Anomaly (>95%) - Epistemic Suspicion Trigger",
-                        "finding": f"Reported metric of {val_pct:.2f}% is exceptionally high for noisy empirical/clinical vision data.",
+                        "finding": f"Reported metric of {val_pct:.2f}% is exceptionally high for noisy empirical/real-world data.",
                         "action": (
-                            "DO NOT PRAISE YET. High accuracy != valid experiment. "
-                            "Mandate 11-point integrity audit: (1) patient-level identity leakage, "
-                            "(2) duplicate/near-duplicate images, (3) train/test contamination, "
-                            "(4) preprocessing/augmentation before split, (5) device/hospital shortcut artifacts, "
-                            "(6) class imbalance gaming, (7) data split methodology, (8) external validation, "
-                            "(9) multi-seed variance, (10) Grad-CAM anatomical plausibility, (11) test memorization."
+                            "DO NOT PRAISE YET. Near-perfect performance in empirical/noisy environments "
+                            "is overwhelmingly a symptom of leakage, lookahead bias, or confounding. "
+                            "Audit: (1) Entity/group identity leakage, (2) Target/outcome bleed, "
+                            "(3) Temporal lookahead, (4) Preprocessing/feature selection leakage, "
+                            "(5) Benchmark/train-test contamination, (6) Spurious shortcuts/artifacts, "
+                            "(7) Class imbalance gaming, (8) Baseline tuning fairness, "
+                            "(9) External validation, (10) Multi-seed variance."
                         ),
                     })
                     break
@@ -214,9 +249,9 @@ def format_text_report(audit: Dict[str, Any]) -> str:
     lines.append("=" * 80)
 
     # Leakage Section
-    lines.append("1. DATA LEAKAGE & INTEGRITY AUDIT")
+    lines.append("1. DATA LEAKAGE & PARTITION AUDIT")
     if not audit["leakage_risks"]:
-        lines.append("   [INFO] No domain-specific identity leakage red flags triggered.")
+        lines.append("   [INFO] No domain-specific identity or temporal leakage red flags triggered.")
     for lr in audit["leakage_risks"]:
         sev = lr["severity"]
         lines.append(f"   [{sev:8s}] {lr['category']}")
@@ -273,9 +308,9 @@ def format_text_report(audit: Dict[str, Any]) -> str:
     critical_leak = any(lr["severity"] == "CRITICAL" for lr in audit["leakage_risks"])
     has_suspicion = len(strigs) > 0
     if critical_leak:
-        lines.append("CRITICAL: Suspected data leakage detected. Must demand patient-level split confirmation.")
+        lines.append("CRITICAL: Suspected data leakage detected. Must demand entity-level grouped split or temporal ordering verification.")
     elif has_suspicion:
-        lines.append("ELEVATED SCRUTINY: Performance >95% detected. Freeze praise and mandate 11-point leakage/shortcut audit.")
+        lines.append("ELEVATED SCRUTINY: Performance >95% detected. Freeze praise and mandate empirical leakage/confounder audit.")
     elif len(claims) > 0 and not vsum["has_adequate_variance"]:
         lines.append("MAJOR CONCERN: Multiple causal claims reported without seed variance or statistical tests.")
     else:
@@ -286,7 +321,7 @@ def format_text_report(audit: Dict[str, Any]) -> str:
     lines.append("  * CANNOT VERIFY != FALSE")
     lines.append("  * VERIFIED != TRUE")
     lines.append("  * EXISTS != SUPPORTS CLAIM")
-    lines.append("  * HIGH ACCURACY != VALID EXPERIMENT")
+    lines.append("  * NEAR-PERFECT METRIC != SOUND METHOD")
     lines.append("  * NO DETECTED ERROR != NO ERROR EXISTS")
     lines.append("  * PLAUSIBLE != PROVEN")
     lines.append("=" * 80)

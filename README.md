@@ -14,7 +14,7 @@ The `skills/` directory contains eight skills:
 | :--- | :--- | :--- |
 | [`docx`](skills/docx/) | `.docx`, `.dotx` | Compiles LaTeX math via Pandoc, edits live Zotero field codes, formats tables from DataFrames, builds editorial documents with docx-js, and edits tracked changes. |
 | [`citation-verifier`](skills/citation-verifier/) | `.docx`, `.bib`, `.md`, `.tex`, `.txt` | Checks references against CrossRef, arXiv, PubMed, and Open Library to detect fake DOIs and mismatched titles. |
-| [`research-reviewer`](skills/research-reviewer/) | `.docx`, `.md`, `.tex`, `.txt` | Peer reviews manuscripts, audits claim-evidence alignment, detects patient-level data leakage, and stress-tests with Devil's Advocate. |
+| [`research-reviewer`](skills/research-reviewer/) | `.docx`, `.md`, `.tex`, `.txt` | Peer reviews empirical research across tabular, time-series, NLP, vision, and systems studies; audits claim-evidence alignment, data leakage, and confounders. |
 | [`brand-docx`](skills/brand-docx/) | `.docx`, `.dotx` | Extracts brand profiles from Word templates and generates documents matching company styles. |
 | [`brand-pptx`](skills/brand-pptx/) | `.pptx`, `.potx` | Extracts slide layouts from PowerPoint templates and generates presentations with native charts. |
 | [`brand-xlsx`](skills/brand-xlsx/) | `.xlsx`, `.xltx` | Fills Excel templates while keeping formulas, number formats, and sheet layout intact. |
@@ -35,10 +35,11 @@ The `skills/` directory contains eight skills:
 - **Multi-Factor Identity Matching**: Evaluates title similarity, author correspondence, and publication years concurrently to catch real identifiers deceptively paired with fabricated paper titles.
 - **Epistemic Boundary**: Enforces the principle that *identifier resolution confirms paper existence in a registry, but does not determine whether the cited source supports the author's claims* (for claim validity, delegate to `research-reviewer`).
 
-### Scientific Peer Review & Methodology Audit
+### Scientific Peer Review & Empirical Methodology Audit
 - **Claim-Evidence Mapping**: Evaluates empirical assertions against reported data tables and assigns categorical epistemic status (`[FACT]`, `[SUPPORTED INFERENCE]`, `[PLAUSIBLE INFERENCE]`, `[UNSUPPORTED]`, `[CONTRADICTED]`).
-- **Data Leakage Detection**: Audits clinical and imaging datasets for subject-level vs image-level split errors, preprocessing leakage, and metric gaming on imbalanced classes.
-- **Devil's Advocate Stress Testing**: Formulates rival hypotheses (capacity confounds, tuning disparities, shortcut learning) to prevent AI agreeableness and challenge unsupported claims.
+- **Empirical Leakage & Confounder Audit**: Detects entity-level identity leakage (`GroupKFold`), temporal lookahead in time series, target proxy bleed in tabular models, benchmark contamination, and metric gaming on skewed data.
+- **Universal Devil's Advocate**: Formulates four rival hypotheses (capacity/resource confounds, tuning disparities, spurious shortcuts, and stochastic flukes) to eliminate AI agreeableness and challenge unsupported claims.
+- **Empirical Suspicion Triggers**: Automatically activates heightened scrutiny when reported metrics appear suspiciously extreme ($R^2 > 0.98$, accuracy/AUC $> 95\%$, or massive unexplained speedup).
 - **Self-Improving Lessons**: Tracks methodological review errors in `LESSONS.md` to prevent recurring oversights.
 
 ### Corporate Template Enforcement

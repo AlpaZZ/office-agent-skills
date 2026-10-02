@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for audit_manuscript.py"""
+"""Unit tests for audit_manuscript.py covering multi-domain leakage, variance, and suspicion triggers."""
 
 import sys
 import unittest
@@ -30,7 +30,7 @@ class TestManuscriptAuditor(unittest.TestCase):
         self.assertIn("NEEDS_STATISTICAL_TEST", statuses)
         self.assertIn("TONE_OVERCLAIM", statuses)
 
-    def test_patient_leakage_detection(self):
+    def test_clinical_patient_leakage_detection(self):
         # Medical text with random split and no patient_id
         text = """
         We evaluated our CNN on 2,000 retinal fundus photographs.
@@ -41,14 +41,38 @@ class TestManuscriptAuditor(unittest.TestCase):
         severities = [lr["severity"] for lr in audit["leakage_risks"]]
         self.assertIn("CRITICAL", severities)
 
-    def test_patient_split_pass(self):
-        # Medical text with proper patient-level grouping
+    def test_tabular_user_leakage_detection(self):
+        # Tabular/fintech text with users and random split
         text = """
-        We evaluated our CNN on 2,000 retinal fundus photographs from 500 patients.
-        To prevent data contamination, we performed a GroupKFold split grouped by patient_id.
-        All images from a single patient were assigned exclusively to either the train or test set.
+        We evaluated our gradient boosting model on 50,000 customer transaction records.
+        We used a standard train_test_split with 80/20 ratio to evaluate fraud detection.
         """
-        audit = audit_manuscript(text, filename="retina_clean.txt")
+        audit = audit_manuscript(text, filename="fraud.txt")
+        severities = [lr["severity"] for lr in audit["leakage_risks"]]
+        categories = [lr["category"] for lr in audit["leakage_risks"]]
+        self.assertIn("CRITICAL", severities)
+        self.assertIn("Entity / Subject Identity Leakage", categories)
+
+    def test_temporal_lookahead_detection(self):
+        # Time series forecasting with random split
+        text = """
+        We trained an autoregressive model for daily stock price forecasting across 5 years.
+        We applied a 10-fold cross-validation with random split across all trading days.
+        """
+        audit = audit_manuscript(text, filename="stock.txt")
+        severities = [lr["severity"] for lr in audit["leakage_risks"]]
+        categories = [lr["category"] for lr in audit["leakage_risks"]]
+        self.assertIn("CRITICAL", severities)
+        self.assertIn("Temporal Lookahead Bias", categories)
+
+    def test_grouped_split_pass(self):
+        # Text with proper user-level grouping
+        text = """
+        We evaluated our recommender system on 100,000 interactions from 2,000 users.
+        To avoid entity contamination, we performed a GroupKFold split grouped by user_id.
+        All records from a single user were assigned strictly to either the train or test set.
+        """
+        audit = audit_manuscript(text, filename="recsys_clean.txt")
         severities = [lr["severity"] for lr in audit["leakage_risks"]]
         self.assertIn("PASS", severities)
 
@@ -57,13 +81,21 @@ class TestManuscriptAuditor(unittest.TestCase):
         audit = audit_manuscript(text_with_variance, filename="variance.txt")
         self.assertTrue(audit["variance_summary"]["has_adequate_variance"])
 
-    def test_suspicion_trigger_detection(self):
-        text = "Our proposed vision model achieved an accuracy of 99.4% on the test split."
-        audit = audit_manuscript(text, filename="anomaly.txt")
+    def test_suspicion_trigger_classification(self):
+        text = "Our proposed model achieved an accuracy of 99.4% on the test split."
+        audit = audit_manuscript(text, filename="anomaly_clf.txt")
         strigs = audit.get("suspicion_triggers", [])
         self.assertGreaterEqual(len(strigs), 1)
         self.assertEqual(strigs[0]["severity"], "CRITICAL_SCRUTINY")
         self.assertIn("99.40%", strigs[0]["metric_found"])
+
+    def test_suspicion_trigger_regression_r2(self):
+        text = "The regression model achieved an R2 of 0.991 on energy demand forecasting."
+        audit = audit_manuscript(text, filename="anomaly_reg.txt")
+        strigs = audit.get("suspicion_triggers", [])
+        self.assertGreaterEqual(len(strigs), 1)
+        self.assertEqual(strigs[0]["severity"], "CRITICAL_SCRUTINY")
+        self.assertIn("99.10%", strigs[0]["metric_found"])
 
 
 if __name__ == "__main__":
