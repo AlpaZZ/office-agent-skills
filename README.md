@@ -1,155 +1,135 @@
-# Office Agent Skills Suite 📑🚀
+# Office Agent Skills
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-brightgreen.svg)](https://www.python.org/)
-[![Compatible: Antigravity / Claude Code / Codex](https://img.shields.io/badge/AI%20Agents-Antigravity%20%7C%20Claude%20Code%20%7C%20Codex-orange.svg)](#installation)
+A collection of skills for working with Word (`.docx`), PowerPoint (`.pptx`), and Excel (`.xlsx`) files in AI coding agents such as Antigravity, Claude Code, and Codex.
 
-An enterprise-grade, multi-format Office automation suite designed specifically for AI agents (**Antigravity**, **Claude Code**, **Codex**, **Cursor**).
-
-Combines **strict corporate brand governance**, **native academic publishing with LaTeX equations & live Zotero integration**, **data science reporting**, **editorial layout creation**, and **legal redlining (Tracked Changes)** across Microsoft Word (`.docx`), PowerPoint (`.pptx`), and Excel (`.xlsx`).
+The repository brings together template-driven brand enforcement, LaTeX math compilation to native Word equations, live Zotero citation management, tabular data insertion, editorial layouts, and tracked changes.
 
 ---
 
-## 🏛️ System Architecture: The 5 Execution Pathways
+## Contents
 
-```
-                                  USER REQUEST / TASK
-                                           │
-         ┌─────────────────────────────────┼─────────────────────────────────┐
-         ▼                                 ▼                                 ▼
-   [PATHWAY 1: ON-BRAND]         [PATHWAY 2: ACADEMIC]             [PATHWAY 3: DATA BRIDGE]
-Company template present        LaTeX math ($$, \frac),           DataFrames, CSV, XLSX,
-(.dotx, .potx, .xltx, brandkit) scientific papers, citations      analytics tables
-         │                                 │                                 │
-         ▼                                 ▼                                 ▼
-    brand-docs                        Pandoc                            python-docx
- (scripts/brandkit/)        (scripts/pandoc/compile_academic)     (scripts/data/dataframe_to_word)
-         │                                 │                                 │
-         └─────────────────────────────────┼─────────────────────────────────┘
-                                           │
-         ┌─────────────────────────────────┴─────────────────────────────────┐
-         ▼                                                                   ▼
-   [PATHWAY 4: EDITORIAL]                                            [PATHWAY 5: LEGAL & ZOTERO]
-New documents from scratch,                                       Existing Word document,
-custom covers, modern layouts, TOC                                Track Changes (<w:ins>/<w:del>),
-         │                                                        live Zotero CSL field codes
-         ▼                                                                   │
-     docx-js                                                                 ▼
- (Node.js engine)                                                        Raw OpenXML
-                                                                  (scripts/zotero/ + merge_runs.py)
-```
+The `skills/` directory contains six skills:
 
----
-
-## 📦 What's Included
-
-| Skill Name | Supported Formats | Primary Superpower |
+| Skill | Target Files | Primary Function |
 | :--- | :--- | :--- |
-| **[`docx`](skills/docx/)** | `.docx`, `.dotx` | **Master Word Suite**: Pandoc LaTeX math, live Zotero CSL fields, python-docx data tables, docx-js editorial design, and legal redlining. |
-| **[`brand-docx`](skills/brand-docx/)** | `.docx`, `.dotx` | **Corporate Word Guardian**: Extracts brand profiles (fonts, colors, logos) from company templates with fail-closed enforcement. |
-| **[`brand-pptx`](skills/brand-pptx/)** | `.pptx`, `.potx` | **Corporate PowerPoint**: Generates slides adhering strictly to company master layouts and native chart styling. |
-| **[`brand-xlsx`](skills/brand-xlsx/)** | `.xlsx`, `.xltx` | **Corporate Excel**: Fills branded financial sheets while preserving formulas, cell extensions, and number formats. |
-| **[`pptx`](skills/pptx/)** | `.pptx`, `.potx` | **Presentation Engine**: Full slide deck authoring via pptxgenjs, layout thumbnailing, and native chart corrupt-proofing. |
-| **[`xlsx`](skills/xlsx/)** | `.xlsx`, `.xlsm`, `.csv` | **Spreadsheet Engine**: Complex formula writing with background recalculation (`recalc.py`) guaranteeing zero `#REF!` errors. |
+| [`docx`](skills/docx/) | `.docx`, `.dotx` | Compiles LaTeX math via Pandoc, edits live Zotero field codes, formats tables from DataFrames, builds editorial documents with docx-js, and edits tracked changes. |
+| [`brand-docx`](skills/brand-docx/) | `.docx`, `.dotx` | Extracts brand profiles from Word templates and generates documents matching company styles. |
+| [`brand-pptx`](skills/brand-pptx/) | `.pptx`, `.potx` | Extracts slide layouts from PowerPoint templates and generates presentations with native charts. |
+| [`brand-xlsx`](skills/brand-xlsx/) | `.xlsx`, `.xltx` | Fills Excel templates while keeping formulas, number formats, and sheet layout intact. |
+| [`pptx`](skills/pptx/) | `.pptx`, `.potx` | Builds presentations from scratch using pptxgenjs, generates slide thumbnails, and validates native charts. |
+| [`xlsx`](skills/xlsx/) | `.xlsx`, `.csv` | Builds spreadsheets using openpyxl, with formula verification using headless LibreOffice. |
 
 ---
 
-## ⚡ Key Highlights
+## Key Capabilities
 
-### 1. 🎓 Academic Papers with LaTeX Math & Live Zotero Integration
-* **LaTeX $\rightarrow$ Native Word OMML**: Converts `$E=mc^2$` and `$$\mathcal{L} = -\sum y \log(\hat{y})$$` directly to editable Microsoft Word Equation objects (never low-res images).
-* **Live Zotero CSL Field Codes**: Injects genuine `<w:fldChar>` + `ADDIN ZOTERO_ITEM CSL_CITATION` XML payloads. The author simply clicks **Zotero $\rightarrow$ Refresh** in the Word Ribbon to re-index all numbers and bibliography.
-* **Auto-Sync via Better BibTeX**: Automatically reads project `references.bib` files and resolves citations via Pandoc citeproc.
+### Academic Writing and Live Citations
+- **LaTeX Math to Word Equations**: Converts inline `$E=mc^2$` and block `$$\sum x_i$$` math into editable Word OMML equations through Pandoc, avoiding static formula images.
+- **Dynamic Zotero Fields**: Reads and writes actual `ADDIN ZOTERO_ITEM CSL_CITATION` field codes in Word XML. The Word plugin recognizes these fields directly when clicking **Zotero → Refresh**.
+- **BibTeX Synchronization**: Supports project `references.bib` files generated by Better BibTeX and resolves citations using Pandoc's citeproc.
 
-### 2. 🛡️ Enterprise Brand Governance (*Fail-Closed*)
-* Extracts corporate brand tokens into reusable Brand Profiles.
-* AI writes brand-agnostic content (`idoc.json`); the deterministic engine injects it into the original template shell.
-* Output is on-brand by construction: arbitrary hallucinated fonts or colors are strictly forbidden.
+### Corporate Template Enforcement
+- Extracts font families, theme palettes, and master layouts from `.dotx`, `.potx`, or `.xltx` files into reusable Brand Profiles.
+- Uses an Intermediate Document structure (`idoc.json`) to keep content separate from styling.
 
-### 3. ⚖️ Legal Redlining & Contract Review
-* Supports native Microsoft Word **Tracked Changes** (`<w:ins>`, `<w:del>`) with author metadata and timestamps.
-* Cross-linked 6-file comment system (`scripts/comment.py`) anchors comments to exact character spans without breaking OpenXML relationships.
+### Contract Editing and Redlining
+- Inserts and edits native Word tracked revisions (`<w:ins>` and `<w:del>`) with author and date tags.
+- Inserts Word comment threads across the required six OpenXML parts without breaking document relationships.
 
-### 4. 📊 Data Science to Document Bridge
-* Instantly injects CSV, Excel, or Pandas data into beautiful, zebra-striped, auto-aligned Word tables.
-
-### 5. 🔍 Deterministic & Visual Quality Assurance
-* **Schema Validation**: Automated XSD verification via `validate.py`.
-* **Formula Proofing**: Mandatory headless formula calculation (`recalc.py`) ensures 0 formula errors.
-* **Visual QA Gate**: Headless LibreOffice conversion to PDF followed by Poppler rasterization (`pdftoppm`) checks for layout clipping and table overflows.
+### Data Science Reporting
+- Reads tabular data from CSV, Excel, or JSON files and outputs zebra-striped Word tables with right-aligned numbers and auto-fitted columns.
 
 ---
 
-## 🚀 Installation & Quick Start
+## Installation
 
 ### Prerequisites
-* **Python**: 3.10 to 3.13
-* **Node.js**: (Optional, for docx-js and pptxgenjs)
+- Python 3.10 to 3.13
+- Node.js (optional, required only for docx-js and pptxgenjs generation from scratch)
+- Pandoc (installable via `pypandoc-binary`)
 
-Install Python dependencies:
+Install the required Python packages:
 ```bash
 pip install -r requirements.txt
 ```
 
-### Installation for Antigravity
-
-Clone or copy the skills into your Antigravity skills directory:
-
+### Setup in Antigravity
+Copy the skills into your workspace `.agents/skills/` directory or into the global configuration directory:
 ```bash
-# Clone the repository
-git clone https://github.com/AlpaZZ/office-agent-skills.git
-
-# Copy to Workspace skills (.agents/skills)
+# Workspace level
 mkdir -p .agents/skills
-cp -r office-agent-skills/skills/* .agents/skills/
+cp -r skills/* .agents/skills/
 
-# Or install globally for Antigravity IDE:
-# Windows: %USERPROFILE%\.gemini\antigravity\skills\
-# Linux/macOS: ~/.gemini/antigravity/skills/
+# Global configuration (Windows)
+# %USERPROFILE%\.gemini\antigravity\skills\
 ```
 
-### Installation for Claude Code
-
+### Setup in Claude Code
+Symlink the skills to your Claude skills directory:
 ```bash
-# Symlink or copy to ~/.claude/skills
 for s in docx brand-docx brand-pptx brand-xlsx pptx xlsx; do
-  ln -s $(pwd)/skills/$s ~/.claude/skills/$s
+  ln -s "$(pwd)/skills/$s" "$HOME/.claude/skills/$s"
 done
 ```
 
 ---
 
-## 🛠️ CLI Quick Reference
+## Usage Examples
 
+### 1. Compile Markdown with Math and Citations
 ```bash
-# 1. Compile Markdown + LaTeX Math + Citations to Word (.docx)
-python skills/docx/scripts/pandoc/compile_academic.py paper.md -o paper.docx \
+python skills/docx/scripts/pandoc/compile_academic.py manuscript.md -o paper.docx \
   --bibliography references.bib --csl ieee.csl
+```
 
-# 2. Inspect active Zotero citations in a manuscript
+### 2. Inspect Zotero Citations in an Existing Document
+```bash
 python skills/docx/scripts/zotero/inspect_zotero.py manuscript.docx
+```
 
-# 3. Inject a new native Zotero citation
+### 3. Inject a New Zotero Citation into Word
+```bash
 python skills/docx/scripts/zotero/inject_zotero.py manuscript.docx \
-  --after "ConvNeXtV2" --citation-text "[40]" \
-  --title "ConvNeXt V2: Co-designing and Scaling ConvNets with Masked Autoencoders" \
-  --authors "Woo, Sanghyun; Debnath, Shoubhik" --year 2023 --venue "CVPR" \
+  --after "MobileNetV3" --citation-text "[39]" \
+  --title "Searching for MobileNetV3" \
+  --authors "Howard, Andrew; Sandler, Mark" --year 2019 --venue "ICCV" \
   -o updated_manuscript.docx
+```
 
-# 4. Inject DataFrame / CSV to a styled Word table
+### 4. Insert a CSV or DataFrame into Word
+```bash
 python skills/docx/scripts/data/dataframe_to_word.py results.csv -o report.docx \
-  --title "Tabel 1: Ringkasan Hasil Eksperimen"
+  --title "Tabel 1: Ringkasan Evaluasi"
+```
 
-# 5. Extract a Corporate Brand Profile from a Word template
-python skills/brand-docx/scripts/cli.py extract --name my_company --template template.dotx
+### 5. Extract a Brand Profile from a Template
+```bash
+python skills/brand-docx/scripts/cli.py extract --name acme --template template.dotx
+```
 
-# 6. Recalculate and verify Excel formulas
-python skills/xlsx/scripts/recalc.py financial_model.xlsx
+### 6. Verify Excel Formulas
+```bash
+python skills/xlsx/scripts/recalc.py model.xlsx
 ```
 
 ---
 
-## 📄 License
+## Credits and Acknowledgements
 
-Distributed under the [MIT License](LICENSE).
+This repository builds upon several open-source projects and libraries:
+
+- **[BrandDocs](https://github.com/ferdinandobons/brand-docs)** by Ferdinando Bonsegna: The brand extraction engine, fail-closed verification pipeline, and Intermediate Document architecture for Word, PowerPoint, and Excel.
+- **[Pandoc](https://pandoc.org/)** by John MacFarlane and contributors: Document conversion engine providing LaTeX math translation to Word OMML equations and citation processing via citeproc.
+- **[Better BibTeX for Zotero](https://github.com/retorquere/zotero-better-bibtex)** by Emiliano Heyns (retorquere): Automated BibTeX export and citation key generation for Zotero libraries.
+- **[Office Word MCP Server](https://github.com/gongrzhe/office-word-mcp-server)** by GongRzhe: Interface patterns for Word document operations in AI assistants.
+- **[docx](https://github.com/dolanmiu/docx)** (docx-js) by Roman Atachiants: Programmatic Word document generation in JavaScript/Node.js.
+- **[PptxGenJS](https://github.com/gitbrent/PptxGenJS)** by Brent Ely: PowerPoint presentation generation in JavaScript.
+- **[python-docx](https://github.com/python-openxml/python-docx)** by Steve Canny: Python library for reading and writing `.docx` files.
+- **[openpyxl](https://openpyxl.readthedocs.io/)** by Eric Gazoni and Charlie Clark: Python library for reading and writing Excel `.xlsx` workbooks.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
 Copyright (c) 2026 AlpaZZ.
