@@ -12,15 +12,24 @@ def _root(start: Path) -> Path:
         root = Path(env_root).expanduser().resolve()
         if (root / "scripts" / "brandkit").is_dir():
             return root
+        if (root / "brandkit").is_dir():
+            return root
 
     for parent in [start] + list(start.parents):
         if (parent / ".claude-plugin").is_dir():
             return parent
-    return start.parents[3]
+        if (parent / "brandkit").is_dir():
+            return parent.parent
+        if (parent / "scripts" / "brandkit").is_dir():
+            return parent
+    return start.parents[3] if len(start.parents) > 3 else start.parent
 
 
 ROOT = _root(Path(__file__).resolve())
-sys.path.insert(0, str(ROOT / "scripts"))
+if (ROOT / "scripts").is_dir():
+    sys.path.insert(0, str(ROOT / "scripts"))
+else:
+    sys.path.insert(0, str(ROOT))
 
 from brandkit.cli import main  # noqa: E402
 

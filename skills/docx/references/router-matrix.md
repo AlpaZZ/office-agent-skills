@@ -37,12 +37,12 @@ custom covers, modern layouts, TOC                                     Track Cha
 
 ## 2. Pathway Specifications
 
-### Pathway 1: On-Brand Corporate Governance (`brand-docs`)
+### Pathway 1: On-Brand Corporate Governance (`docx` / `brand-docs`)
 * **When to use**:
-  - User attaches or references a company template (`.dotx`, `.potx`, `.xltx`).
+  - User attaches or references a company template (`.dotx`, `.docx`).
   - Request mentions "sesuai brand kantor", "use our brand kit", or a `./brand-kit` directory exists.
 * **Tooling**:
-  - `brand-docx`, `brand-pptx`, `brand-xlsx` powered by `scripts/brandkit/cli.py`.
+  - `docx` (Word engine powered by `scripts/brandkit/` and `scripts/cli.py`), `brand-pptx` (PowerPoint), `brand-xlsx` (Excel).
 * **Execution**:
   1. Extract profile: `python scripts/cli.py extract --name company --template template.dotx`
   2. Verify: `python scripts/cli.py verify --name company`
@@ -116,3 +116,4 @@ Every output document must pass verification:
 3. **Zotero Integrity (if citations present)**: `python scripts/zotero/validate_zotero.py out.docx`
 4. **Citation Authenticity**: `python scripts/citations/verify_citations.py out.docx` (zero hallucinated citations)
 5. **Visual Layout QA**: Render to PDF via `soffice.py` and inspect images via `pdftoppm`.
+6. **Publication & Layout Linting**: `python scripts/audit_layout.py out.docx --profile skripsi-id` (or with `--template template.dotx`)

@@ -8,14 +8,13 @@ The repository brings together template-driven brand enforcement, LaTeX math com
 
 ## Contents
 
-The `skills/` directory contains eight skills:
+The `skills/` directory contains seven skills:
 
 | Skill | Target Files | Primary Function |
 | :--- | :--- | :--- |
-| [`docx`](skills/docx/) | `.docx`, `.dotx` | Audits layout, margins, fonts, and image DPI/blur via `audit_layout.py`, compiles LaTeX math via Pandoc, edits live Zotero field codes, formats tables from DataFrames, and edits tracked changes. |
+| [`docx`](skills/docx/) | `.docx`, `.dotx` | Unified Word engine: layout & visual audit (`audit_layout.py`), brand profile extraction & generation, LaTeX math via Pandoc, live Zotero field codes, DataFrame tables, and tracked changes. |
 | [`citation-verifier`](skills/citation-verifier/) | `.docx`, `.bib`, `.md`, `.tex`, `.txt` | Checks references against CrossRef, arXiv, PubMed, and Open Library to detect fake DOIs and mismatched titles. |
 | [`research-reviewer`](skills/research-reviewer/) | `.docx`, `.md`, `.tex`, `.txt` | Peer reviews empirical research across tabular, time-series, NLP, vision, and systems studies; audits claim-evidence alignment, data leakage, and confounders. |
-| [`brand-docx`](skills/brand-docx/) | `.docx`, `.dotx` | Extracts brand profiles from Word templates and generates documents matching company styles. |
 | [`brand-pptx`](skills/brand-pptx/) | `.pptx`, `.potx` | Extracts slide layouts from PowerPoint templates and generates presentations with native charts. |
 | [`brand-xlsx`](skills/brand-xlsx/) | `.xlsx`, `.xltx` | Fills Excel templates while keeping formulas, number formats, and sheet layout intact. |
 | [`pptx`](skills/pptx/) | `.pptx`, `.potx` | Builds presentations from scratch using pptxgenjs, generates slide thumbnails, and validates native charts. |
@@ -89,7 +88,7 @@ cp -r skills/* .agents/skills/
 ### Setup in Claude Code
 Symlink the skills to your Claude skills directory:
 ```bash
-for s in docx citation-verifier research-reviewer brand-docx brand-pptx brand-xlsx pptx xlsx; do
+for s in docx citation-verifier research-reviewer brand-pptx brand-xlsx pptx xlsx; do
   ln -s "$(pwd)/skills/$s" "$HOME/.claude/skills/$s"
 done
 ```
@@ -116,18 +115,27 @@ python skills/citation-verifier/scripts/verify_citations.py manuscript.docx
 python skills/citation-verifier/scripts/verify_citations.py draft.md --format markdown -o audit_report.md
 ```
 
-### 3. Compile Markdown with Math and Citations
+### 3. Audit Layout, Margins, Image DPI, and Captions
+```bash
+# Audit against Indonesian Skripsi guidelines (UI: 4-4-3-3 cm margins, 300 DPI, TOC, captions)
+python skills/docx/scripts/audit_layout.py manuscript.docx --profile skripsi-id
+
+# Auto-learn layout rules directly from a target journal template
+python skills/docx/scripts/audit_layout.py manuscript.docx --template AuthorGuideline_JIKI.docx
+```
+
+### 4. Compile Markdown with Math and Citations
 ```bash
 python skills/docx/scripts/pandoc/compile_academic.py manuscript.md -o paper.docx \
   --bibliography references.bib --csl ieee.csl
 ```
 
-### 4. Inspect Zotero Citations in an Existing Document
+### 5. Inspect Zotero Citations in an Existing Document
 ```bash
 python skills/docx/scripts/zotero/inspect_zotero.py manuscript.docx
 ```
 
-### 5. Inject a New Zotero Citation into Word
+### 6. Inject a New Zotero Citation into Word
 ```bash
 python skills/docx/scripts/zotero/inject_zotero.py manuscript.docx \
   --after "MobileNetV3" --citation-text "[39]" \
@@ -137,18 +145,22 @@ python skills/docx/scripts/zotero/inject_zotero.py manuscript.docx \
   -o updated_manuscript.docx
 ```
 
-### 6. Insert a CSV or DataFrame into Word
+### 7. Insert a CSV or DataFrame into Word
 ```bash
 python skills/docx/scripts/data/dataframe_to_word.py results.csv -o report.docx \
   --title "Tabel 1: Ringkasan Evaluasi"
 ```
 
-### 7. Extract a Brand Profile from a Template
+### 8. Extract a Brand Profile from a Template and Generate On-Brand Word Docs
 ```bash
-python skills/brand-docx/scripts/cli.py extract --name acme --template template.dotx
+# Extract brand profile from template
+python skills/docx/scripts/cli.py extract --name acme --template template.dotx
+
+# Generate new branded Word document from content
+python skills/docx/scripts/cli.py generate --name acme --input idoc.json -o out.docx
 ```
 
-### 8. Verify Excel Formulas
+### 9. Verify Excel Formulas
 ```bash
 python skills/xlsx/scripts/recalc.py model.xlsx
 ```
