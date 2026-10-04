@@ -1,99 +1,101 @@
 ---
 name: xlsx
-description: "Use this skill any time a spreadsheet file is the primary input or output. This means any task where the user wants to: open, read, edit, or fix an existing .xlsx, .xlsm, .xltx, .csv, or .tsv file (e.g., adding columns, computing formulas, formatting, charting, cleaning messy data); create a new spreadsheet from scratch or from other data sources; or convert between tabular file formats. Trigger especially when the user references a spreadsheet file by name or path — even casually (like \"the xlsx in my downloads\") — and wants something done to it or produced from it. Also trigger for cleaning or restructuring messy tabular data files (malformed rows, misplaced headers, junk data) into proper spreadsheets. The deliverable must be a spreadsheet file. Do NOT trigger when the primary deliverable is a Word document, HTML report, standalone Python script, database pipeline, or Google Sheets API integration, even if tabular data is involved."
+description: "Comprehensive Excel spreadsheet (.xlsx/.xltx/.xlsm) engine. Covers: (1) On-brand corporate workbook generation & template extraction via the Brand Engine (extract, comprehend, verify, generate from .xlsx/.xltx templates and GridDocuments), (2) Programmatic spreadsheet creation and editing via openpyxl, (3) Mandatory headless formula calculation & zero-error verification via scripts/recalc.py, (4) Bulk data processing via pandas, and (5) Financial modeling conventions. Trigger on any mention of spreadsheets, Excel, workbooks, .xlsx, .xlsm, .xltx, financial models, sheet formulas, or Excel template brand enforcement."
 license: MIT
 ---
 
-# XLSX creation, editing, and analysis
+# Unified XLSX Creation, Editing, Brand & Analysis Suite
 
-| Task | Approach |
-|---|---|
-| **Create** or **edit** with formulas/formatting | `openpyxl` — see gotchas below |
-| **Bulk data** in or out | `pandas` (`read_excel`, `to_excel`) |
-| **Quick look** at a sheet | `markitdown file.xlsx` — `## SheetName` per sheet; reads `.xlsm` too. No cell coordinates, so don't plan edits from it |
-| **Read** a model (formulas *and* values) | two `load_workbook` passes — see gotchas |
+Choose your approach based on task requirements:
 
-> `openpyxl`, `pandas`, and `markitdown` are preinstalled — do not run `pip install` first; write the script and import directly. Only if an import fails (or the `markitdown` command is missing): `pip install` the missing package.
+| Task / Domain | Engine / Approach | When to Choose |
+|---|---|---|
+| **On-Brand Corporate Workbook** | `scripts/brandkit/` (`scripts/cli.py`) | Extracting reusable Brand Profiles from company `.xlsx`/`.xltx` templates and generating on-brand workbooks fail-closed from GridDocuments. |
+| **Create or Edit Models** | `openpyxl` + `scripts/recalc.py` | Building dynamic financial models, budgets, and automated workbooks with live Excel formulas and formatting. |
+| **Formula Recalculation** | `scripts/recalc.py output.xlsx` | Mandatory verification computing formula caches via headless LibreOffice and ensuring zero `#NAME?` or `#VALUE!` errors. |
+| **Bulk Data In / Out** | `pandas` (`read_excel`, `to_excel`) | Importing/exporting large datasets or performing tabular transformations. |
+| **Quick Sheet Inspection** | `markitdown file.xlsx` | Markdown inspection of sheet tabs and high-level contents. |
 
-> Script paths below are relative to this skill's directory.
+---
 
-## Requirements for every output
+## 1. On-Brand Corporate Workbook Governance (Brand Engine)
 
-- **Professional font** (Arial, Times New Roman) throughout, unless the user says otherwise.
-- **Zero formula errors.** Never ship while `recalc.py` reports `errors_found`. If you think an error predates you, prove it: load the *original* with `data_only=True` and look at that cell. An error you introduced looks exactly like one you inherited.
-- **Use formulas, never hardcoded results.** Write `sheet['B10'] = '=SUM(B2:B9)'`, not the Python-computed total. The sheet must recalculate when its inputs change.
-- **Follow the user's spec literally.** Exact tab names, exact column headers, and the formula they spelled out. A redesign that computes something else fails, however elegant.
-- **Document every assumption and hardcoded number** where the reader will see it — a cell comment, or an adjacent cell at a table's end. Cite a real source when one exists (`Source: Company 10-K, FY2024, Page 45, Revenue Note, [SEC EDGAR URL]`); when the number came from the user, say so plainly.
-- **A workbook *you create* for someone to fill in** needs a short legend naming which cells to edit, and one example row of realistic values showing the expected format. Never add such a row to a file you were asked to edit.
-- **Editing an existing file: match its conventions exactly.** They override every guideline here. Find its designated input cells first — a distinct font color, fill, or shading marks them — write only there, and leave every existing formula untouched.
+Use this pathway when the user provides or references a company workbook template (`.xlsx` / `.xltx`) or asks to "fill this template", "use our workbook brand kit", or generate an on-brand spreadsheet from structured data.
 
-## Recalculate (mandatory whenever the file contains formulas)
+### The Seven Verbs
+The engine implements three deterministic core verbs plus four model-assisted learning verbs:
 
-openpyxl writes formulas as strings with **no cached values**. Until you recalculate, every
-formula cell reads back as `None` to anything reading cached values — `pandas`,
-`load_workbook(data_only=True)`, and most previewers.
+| Verb | Input | Output | CLI Command |
+|---|---|---|---|
+| **extract** | A company `.xlsx` or `.xltx` template | A reusable Brand Profile (`brand-kit/<name>/`) | `python scripts/cli.py extract --name <brand> --template <template.xlsx>` |
+| **comprehend** *(optional)* | Saved profile + model-authored `comprehension.json` | Profile with validated, cached `comprehension` block | `python scripts/cli.py comprehend --name <brand> --input comprehension.json` |
+| **verify** | Saved Brand Profile | QA findings + deterministic verdict | `python scripts/cli.py verify --name <brand>` |
+| **generate** | Data (`GridDocument`) + profile | New on-brand `.xlsx` | `python scripts/cli.py generate --name <brand> --input grid.json -o out.xlsx` |
+| **learn** | Profile's cross-run history | Recurring findings distilled to shell-frozen overrides | `python scripts/cli.py learn --name <brand> --accept` |
+| **propose-overrides** | Residual issues + proposal | Shell-backed corrections fail-closed | `python scripts/cli.py propose-overrides --name <brand> --input overrides.json --accept` |
+| **refine** | User feedback delta | Comprehension overlaid for future generations | `python scripts/cli.py refine --name <brand> --input refinement.json --accept` |
+
+### Hard Rules for Brand Workbooks
+1. `scripts/cli.py` (or `scripts/brand_cli.py`) is the launcher. It automatically resolves the engine root.
+2. Run preflight (`python scripts/cli.py doctor`) before extraction or generation to verify system readiness.
+3. **Extract** opens the template read-only and saves `brand-kit/<name>/template/shell.xlsx` byte-for-byte.
+4. **Generate** opens the saved shell and resolves every named cell/region through `profile.json`.
+5. **Author role-first, not style-first**: Do not put font names, pt sizes, hex colors, or raw style names in a `GridDocument`.
+6. See [`references/comprehension.md`](references/comprehension.md) and [`references/visual-audit.md`](references/visual-audit.md) for full details.
+
+---
+
+## 2. Requirements for Every Output Workbook
+
+- **Professional font** (Arial, Times New Roman, Calibri) throughout, unless specified otherwise.
+- **Zero formula errors.** Never ship while `recalc.py` reports `errors_found`.
+- **Use formulas, never hardcoded results.** Write `sheet['B10'] = '=SUM(B2:B9)'`, not the Python-computed total.
+- **Follow the user's spec literally.** Exact tab names, exact column headers, and the formula they spelled out.
+- **Document every assumption and hardcoded number** in a cell comment or adjacent cell.
+- **A workbook created for someone to fill in** needs a short legend naming which cells to edit, and one example row.
+- **Editing an existing file: match its conventions exactly.** Leave every existing formula untouched.
+
+---
+
+## 3. Mandatory Recalculation (`recalc.py`)
+
+openpyxl writes formulas as strings with **no cached values**. Until you recalculate, every formula cell reads back as `None` to external readers.
 
 ```bash
 python scripts/recalc.py output.xlsx [timeout_seconds]   # default 30
 ```
 
 LibreOffice computes every formula, the file is **rewritten in place**, and you get JSON:
-`status` (`success` | `errors_found`), `total_formulas`, `total_errors`, and an
-`error_summary` naming up to 100 cells per error type (`locations_truncated` says how many it
-withheld — trust `total_errors`, not the length of the list). Fix what it names and run it
-again. **JSON with an `error` key instead of a `status` means nothing was recalculated**, and
-only that case exits non-zero — `errors_found` exits 0, so never treat a clean exit as a clean
-workbook.
+`status` (`success` | `errors_found`), `total_formulas`, `total_errors`, and an `error_summary`. Fix what it names and run again.
 
-**A green recalc proves your formulas *evaluate*, not that they are *right*.** An off-by-one
-range or a reference to the wrong row yields a clean, error-free file with wrong numbers.
-Write 2–3 formulas first and check they pull the values you expect, before building out a grid.
+---
 
-**A workbook that links to another file loses those links** if you re-save it with openpyxl and
-then recalculate. Such a formula reads `='[1]Returns Analysis'!$B$2` — the `[1]` is an index
-into the workbook's external-reference list, naming a *separate file on disk*, not a sheet.
-That file is rarely present here, so the cell's cached value is the only thing holding its
-data. openpyxl strips that value on save; LibreOffice then has to resolve the reference for
-real, fails, writes `#NAME?`, and deletes every link. `recalc.py` refuses to run in that state
-— copy those cells' values out of the original before you save over them (`--force` overrides,
-and accepts the loss).
+## 4. Choosing Formulas That Survive Verification
 
-## Choosing formulas that survive verification
+LibreOffice implements fewer functions than Excel. Functions it cannot evaluate become literal `#NAME?`:
 
-LibreOffice implements fewer functions than Excel, and one it cannot evaluate becomes a
-literal `#NAME?` baked into the file you deliver.
+- **Prefer Excel-2007-era functions**: `SUMIFS`, `INDEX`, `MATCH`, `IFERROR`, `SUMPRODUCT` (require no prefix).
+- **Post-2007 functions require `_xlfn.` prefix**: `_xlfn.TEXTJOIN`, `_xlfn.CONCAT`, `_xlfn.IFS`, `_xlfn.SWITCH`, `_xlfn.MAXIFS`, `_xlfn.MINIFS`. Written bare, each yields `#NAME?`.
+- **Never use `XLOOKUP`, `XMATCH`, `SORT`, `FILTER`, `UNIQUE`, or `SEQUENCE`**: The headless LibreOffice runtime cannot evaluate them properly. Use `INDEX`/`MATCH` instead.
 
-- **Prefer Excel-2007-era functions** — `SUMIFS`, `INDEX`, `MATCH`, `IFERROR`, `SUMPRODUCT` — which need no prefix.
-- **Six post-2007 functions work, but only with an `_xlfn.` prefix**, because openpyxl writes your formula into the XML verbatim and Excel stores post-2007 names prefixed (its UI hides the prefix): `_xlfn.TEXTJOIN`, `_xlfn.CONCAT`, `_xlfn.IFS`, `_xlfn.SWITCH`, `_xlfn.MAXIFS`, `_xlfn.MINIFS`. Written bare, each yields `#NAME?`.
-- **Never use `XLOOKUP`, `XMATCH`, `SORT`, `FILTER`, `UNIQUE`, or `SEQUENCE`.** The runtime's LibreOffice cannot evaluate them under *any* prefix. Newer builds do evaluate them, but they are spilling array functions and an openpyxl-written file has no spill metadata, so only the top-left cell of the range gets a value — and `recalc.py` reports `total_errors: 0` on the truncated result. Use `INDEX`/`MATCH` for lookups, and sort, filter, and de-duplicate in Python before writing the cells.
-- A formula LibreOffice could not parse is written back **lowercased** — a quick tell beside a `#NAME?`.
+---
 
-## openpyxl gotchas
+## 5. openpyxl Gotchas
 
-- **Reading a model takes two loads.** `data_only=True` yields cached values with the formulas gone; the default yields formula strings with no values. One pass cannot give you both.
-- **`data_only=True` is destructive if you save.** That workbook has no formulas left, so saving replaces every one with a literal — permanently.
-- **`data_only=True` on a file openpyxl just wrote returns `None` everywhere** — run `recalc.py` first. (A formula whose result is `""` also reads back as `None`.)
-- **Merged cells: write the top-left anchor only.** Every other cell in the range is a `MergedCell` whose `.value` is read-only.
-- **`.xlsm` loses its macros unless you pass `keep_vba=True`** to `load_workbook`.
-- **A sheet name containing a space must be quoted** in a cross-sheet reference: `='Assumptions Inputs'!$B$5`. Unquoted, it evaluates to `#VALUE!`.
+- **Reading a model takes two loads**: `data_only=True` yields cached values (formulas stripped); default yields formula strings with no values.
+- **`data_only=True` is destructive on save**: Saving after `data_only=True` permanently replaces formulas with static numbers.
+- **Merged cells**: Write the top-left anchor only. Sibling cells are read-only `MergedCell`.
+- **`.xlsm` macros**: Always pass `keep_vba=True` to `load_workbook`.
+- **Sheet names with spaces**: Must be quoted in formulas: `='Assumptions Inputs'!$B$5`.
 
-## Financial models
+---
 
-Unless the user says otherwise, or the existing file already does something else.
+## 6. Financial Model Conventions
 
-**Color:** blue text (`0,0,255`) for hardcoded inputs and scenario levers · black for formulas ·
-green (`0,128,0`) for links to another sheet · red (`255,0,0`) for links to another file ·
-yellow fill (`255,255,0`) for key assumptions and cells the user should fill in.
-
-**Numbers:** currency `$#,##0`, with the unit named in the header (`Revenue ($mm)`) · zeros
-render as `-`, including in percentages (`$#,##0;($#,##0);-`) · negatives in parentheses ·
-percentages `0.0%`, **stored as fractions** (`0.15` renders `15.0%`; storing `15` renders
-`1500.0%`) · valuation multiples `0.0x` · years as text (`"2024"`, never `2,024`).
-
-**Structure:** every assumption in its own labeled cell, referenced by the formulas that use it
-(`=B5*(1+$B$6)`, never `=B5*1.05`) · formulas consistent across every projection period, since a
-lone edited cell mid-row is the commonest silent error · guard denominators that can be zero.
+- **Colors**: Blue text (`0,0,255`) for inputs · black for formulas · green (`0,128,0`) for cross-sheet links · red (`255,0,0`) for external file links · yellow fill (`255,255,0`) for user inputs.
+- **Numbers**: Currency `$#,##0`, unit named in header (`Revenue ($mm)`) · zeros as `-` (`$#,##0;($#,##0);-`) · negatives in parentheses · percentages `0.0%` stored as fractions (`0.15` renders `15.0%`).
+- **Structure**: Every assumption in its own labeled cell (`=B5*(1+$B$6)`). Guard denominators against division by zero (`IF(B6=0, 0, B5/B6)`).
 
 ## Dependencies
 
-`openpyxl`, `pandas`, `markitdown` (pip, preinstalled — install only if an import fails or the command is missing) · LibreOffice (`soffice`, auto-configured for sandboxed environments via `scripts/office/soffice.py`)
+`openpyxl` · `pandas` · `markitdown` · `lxml` · `Pillow` · LibreOffice (`soffice`, auto-configured via `scripts/office/soffice.py`)

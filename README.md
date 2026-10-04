@@ -8,17 +8,15 @@ The repository brings together template-driven brand enforcement, LaTeX math com
 
 ## Contents
 
-The `skills/` directory contains seven skills:
+The `skills/` directory contains five unified skills:
 
 | Skill | Target Files | Primary Function |
 | :--- | :--- | :--- |
 | [`docx`](skills/docx/) | `.docx`, `.dotx` | Unified Word engine: layout & visual audit (`audit_layout.py`), brand profile extraction & generation, LaTeX math via Pandoc, live Zotero field codes, DataFrame tables, and tracked changes. |
+| [`pptx`](skills/pptx/) | `.pptx`, `.potx` | Unified PowerPoint engine: brand profile extraction & on-brand deck generation, scratch presentations via pptxgenjs, slide thumbnails (`thumbnail.py`), and chart validation. |
+| [`xlsx`](skills/xlsx/) | `.xlsx`, `.xltx`, `.xlsm`, `.csv` | Unified Excel engine: brand profile extraction & on-brand workbook fill, openpyxl modeling, formula verification via headless LibreOffice (`recalc.py`), and pandas data pipelines. |
 | [`citation-verifier`](skills/citation-verifier/) | `.docx`, `.bib`, `.md`, `.tex`, `.txt` | Checks references against CrossRef, arXiv, PubMed, and Open Library to detect fake DOIs and mismatched titles. |
 | [`research-reviewer`](skills/research-reviewer/) | `.docx`, `.md`, `.tex`, `.txt` | Peer reviews empirical research across tabular, time-series, NLP, vision, and systems studies; audits claim-evidence alignment, data leakage, and confounders. |
-| [`brand-pptx`](skills/brand-pptx/) | `.pptx`, `.potx` | Extracts slide layouts from PowerPoint templates and generates presentations with native charts. |
-| [`brand-xlsx`](skills/brand-xlsx/) | `.xlsx`, `.xltx` | Fills Excel templates while keeping formulas, number formats, and sheet layout intact. |
-| [`pptx`](skills/pptx/) | `.pptx`, `.potx` | Builds presentations from scratch using pptxgenjs, generates slide thumbnails, and validates native charts. |
-| [`xlsx`](skills/xlsx/) | `.xlsx`, `.csv` | Builds spreadsheets using openpyxl, with formula verification using headless LibreOffice. |
 
 ---
 
@@ -50,8 +48,8 @@ The `skills/` directory contains seven skills:
 - **Curated Empirical Lessons**: Human-curated lessons repository with a proposal gate (`LESSON_PROPOSALS.md`) to prevent self-reinforcing bias drift.
 
 ### Corporate Template Enforcement
-- Extracts font families, theme palettes, and master layouts from `.dotx`, `.potx`, or `.xltx` files into reusable Brand Profiles.
-- Uses an Intermediate Document structure (`idoc.json`) to keep content separate from styling.
+- Extracts font families, theme palettes, and master layouts from `.dotx`, `.potx`, or `.xltx` files into reusable Brand Profiles for Word (`docx`), PowerPoint (`pptx`), and Excel (`xlsx`).
+- Uses Intermediate Documents (`idoc.json` / `grid.json`) to keep content separate from styling.
 
 ### Contract Editing and Redlining
 - Inserts and edits native Word tracked revisions (`<w:ins>` and `<w:del>`) with author and date tags.
@@ -88,7 +86,7 @@ cp -r skills/* .agents/skills/
 ### Setup in Claude Code
 Symlink the skills to your Claude skills directory:
 ```bash
-for s in docx citation-verifier research-reviewer brand-pptx brand-xlsx pptx xlsx; do
+for s in docx pptx xlsx citation-verifier research-reviewer; do
   ln -s "$(pwd)/skills/$s" "$HOME/.claude/skills/$s"
 done
 ```
@@ -151,16 +149,22 @@ python skills/docx/scripts/data/dataframe_to_word.py results.csv -o report.docx 
   --title "Tabel 1: Ringkasan Evaluasi"
 ```
 
-### 8. Extract a Brand Profile from a Template and Generate On-Brand Word Docs
+### 8. Extract Brand Profiles and Generate On-Brand Office Documents
 ```bash
-# Extract brand profile from template
+# Word: Extract profile and generate on-brand .docx
 python skills/docx/scripts/cli.py extract --name acme --template template.dotx
-
-# Generate new branded Word document from content
 python skills/docx/scripts/cli.py generate --name acme --input idoc.json -o out.docx
+
+# PowerPoint: Extract profile and generate on-brand .pptx
+python skills/pptx/scripts/cli.py extract --name acme --template template.potx
+python skills/pptx/scripts/cli.py generate --name acme --input idoc.json -o out.pptx
+
+# Excel: Extract profile and fill on-brand .xlsx
+python skills/xlsx/scripts/cli.py extract --name acme --template template.xltx
+python skills/xlsx/scripts/cli.py generate --name acme --input grid.json -o out.xlsx
 ```
 
-### 9. Verify Excel Formulas
+### 9. Verify Excel Formulas (Mandatory Recalculation)
 ```bash
 python skills/xlsx/scripts/recalc.py model.xlsx
 ```

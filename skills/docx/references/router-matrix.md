@@ -42,7 +42,7 @@ custom covers, modern layouts, TOC                                     Track Cha
   - User attaches or references a company template (`.dotx`, `.docx`).
   - Request mentions "sesuai brand kantor", "use our brand kit", or a `./brand-kit` directory exists.
 * **Tooling**:
-  - `docx` (Word engine powered by `scripts/brandkit/` and `scripts/cli.py`), `brand-pptx` (PowerPoint), `brand-xlsx` (Excel).
+  - `docx` (Word), `pptx` (PowerPoint), `xlsx` (Excel) — each equipped with native `scripts/brandkit/` and `scripts/cli.py` engines.
 * **Execution**:
   1. Extract profile: `python scripts/cli.py extract --name company --template template.dotx`
   2. Verify: `python scripts/cli.py verify --name company`
