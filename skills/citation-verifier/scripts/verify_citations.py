@@ -143,6 +143,20 @@ def _fetch_url(url: str, user_agent: str, headers: Optional[Dict[str, str]] = No
         raise e
 
 
+def _probe_url(url: str, user_agent: str, timeout: int = 10) -> int:
+    """Check reachability without downloading an arbitrary publisher payload."""
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent}, method="HEAD")
+    try:
+        with urllib.request.urlopen(req, context=_get_ssl_context(), timeout=timeout) as resp:
+            return resp.status
+    except urllib.error.HTTPError as exc:
+        if exc.code not in (405, 501):
+            return exc.code
+        req = urllib.request.Request(url, headers={"User-Agent": user_agent, "Range": "bytes=0-0"})
+        with urllib.request.urlopen(req, context=_get_ssl_context(), timeout=timeout) as resp:
+            return resp.status
+
+
 def normalize_title(title: str) -> str:
     """Normalize paper title for fuzzy comparison."""
     if not title:
@@ -760,7 +774,7 @@ class CitationVerifier:
             return self.cache[cache_key]
 
         try:
-            status, _, _ = _fetch_url(clean_url, user_agent=self.user_agent, timeout=self.timeout)
+            status = _probe_url(clean_url, user_agent=self.user_agent, timeout=self.timeout)
             if status in (200, 301, 302, 307, 308):
                 res = {
                     "type": "URL",
@@ -808,6 +822,17 @@ class CitationVerifier:
 
 def extract_zotero_citations_from_docx(doc_path: Path) -> List[Dict[str, Any]]:
     """Extract citations from Word document Zotero CSL field codes."""
+    return _extract_csl_citations_from_docx(doc_path, "ADDIN ZOTERO_ITEM CSL_CITATION", "Zotero")
+
+
+def extract_mendeley_citations_from_docx(doc_path: Path) -> List[Dict[str, Any]]:
+    """Extract legacy Mendeley Desktop CSL_CITATION fields from a DOCX."""
+    return _extract_csl_citations_from_docx(doc_path, "ADDIN CSL_CITATION", "Mendeley")
+
+
+def _extract_csl_citations_from_docx(
+    doc_path: Path, field_marker: str, manager_name: str
+) -> List[Dict[str, Any]]:
     citations = []
     if not zipfile.is_zipfile(doc_path):
         return citations
@@ -827,12 +852,12 @@ def extract_zotero_citations_from_docx(doc_path: Path) -> List[Dict[str, Any]]:
 
             start_pos = 0
             while True:
-                idx = xml_content.find("ADDIN ZOTERO_ITEM CSL_CITATION", start_pos)
+                idx = xml_content.find(field_marker, start_pos)
                 if idx == -1:
                     break
                 brace_start = xml_content.find("{", idx)
                 if brace_start == -1:
-                    start_pos = idx + len("ADDIN ZOTERO_ITEM CSL_CITATION")
+                    start_pos = idx + len(field_marker)
                     continue
 
                 depth = 0
@@ -877,7 +902,7 @@ def extract_zotero_citations_from_docx(doc_path: Path) -> List[Dict[str, Any]]:
                                     year = parts[0]
 
                             citations.append({
-                                "source": f"Zotero ({part})",
+                                "source": f"{manager_name} ({part})",
                                 "doi": doi,
                                 "title": title,
                                 "authors": authors,
@@ -888,7 +913,7 @@ def extract_zotero_citations_from_docx(doc_path: Path) -> List[Dict[str, Any]]:
                         pass
                     start_pos = brace_end
                 else:
-                    start_pos = idx + len("ADDIN ZOTERO_ITEM CSL_CITATION")
+                    start_pos = idx + len(field_marker)
     return citations
 
 
@@ -1092,8 +1117,11 @@ def harvest_document_citations(doc_path: Path) -> List[Dict[str, Any]]:
     citations = []
 
     if ext in (".docx", ".dotx"):
-        zotero_items = extract_zotero_citations_from_docx(doc_path)
-        for z in zotero_items:
+        manager_items = (
+            extract_zotero_citations_from_docx(doc_path)
+            + extract_mendeley_citations_from_docx(doc_path)
+        )
+        for z in manager_items:
             if z.get("doi"):
                 citations.append({
                     "source": z["source"],
@@ -1109,6 +1137,21 @@ def harvest_document_citations(doc_path: Path) -> List[Dict[str, Any]]:
         for item in text_items:
             if not any(c["identifier"].lower() == item["identifier"].lower() for c in citations):
                 citations.append(item)
+
+        # Mendeley Cite keeps library CSL-JSON in the web-extension package,
+        # outside Word's visible text runs. Harvest identifiers from that data
+        # without modifying the extension or trying to interpret its UI state.
+        try:
+            with zipfile.ZipFile(doc_path, "r") as zf:
+                for name in zf.namelist():
+                    if not name.startswith("word/webextensions/") or not name.endswith(".xml"):
+                        continue
+                    raw = zf.read(name).decode("utf-8", errors="replace")
+                    for item in scan_raw_text(raw, source_label="Mendeley Cite metadata"):
+                        if not any(c["identifier"].lower() == item["identifier"].lower() for c in citations):
+                            citations.append(item)
+        except (OSError, zipfile.BadZipFile):
+            pass
 
     elif ext == ".bib":
         with open(doc_path, "r", encoding="utf-8", errors="replace") as f:

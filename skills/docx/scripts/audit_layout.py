@@ -80,6 +80,7 @@ PROFILES = {
         "preferred_image_dpi": 300.0,
         "require_toc": True,
         "academic_table_borders": True,
+        "require_native_captions": True,
     },
     "jiki-journal": {
         "name": "Jurnal Ilmu Komputer dan Informasi (JIKI UI - SINTA 2)",
@@ -106,6 +107,7 @@ PROFILES = {
         "preferred_image_dpi": 300.0,
         "require_toc": False,
         "academic_table_borders": True,  # No vertical lines
+        "require_native_captions": True,
     },
     "general": {
         "name": "General Academic / APA 7th Edition",
@@ -132,6 +134,7 @@ PROFILES = {
         "preferred_image_dpi": 300.0,
         "require_toc": False,
         "academic_table_borders": True,
+        "require_native_captions": True,
     }
 }
 
@@ -208,6 +211,9 @@ def extract_profile_from_template(template_path: str) -> Dict[str, Any]:
         default_font = "Times New Roman"
         body_size = 12.0
         line_spacing = [1.5]
+        normal_before_twips = None
+        normal_after_twips = None
+        normal_tab_stops = []
 
         if styles_tree is not None:
             for s in styles_tree.findall(f".//{{{NS['w']}}}style"):
@@ -221,6 +227,13 @@ def extract_profile_from_template(template_path: str) -> Dict[str, Any]:
                     spacing = s.find(f".//{{{NS['w']}}}spacing")
                     if spacing is not None and spacing.attrib.get(f"{{{NS['w']}}}line", "").isdigit():
                         line_spacing = [round(float(spacing.attrib.get(f"{{{NS['w']}}}line")) / 240.0, 1)]
+                    if spacing is not None:
+                        normal_before_twips = spacing.attrib.get(f"{{{NS['w']}}}before")
+                        normal_after_twips = spacing.attrib.get(f"{{{NS['w']}}}after")
+                    for tab in s.findall(f".//{{{NS['w']}}}tab"):
+                        pos = tab.attrib.get(f"{{{NS['w']}}}pos")
+                        if pos:
+                            normal_tab_stops.append(pos)
                     break
 
         paper_size_label = "A4" if abs(width_cm - 21.0) < 0.5 and abs(height_cm - 29.7) < 0.5 else "Letter"
@@ -243,6 +256,9 @@ def extract_profile_from_template(template_path: str) -> Dict[str, Any]:
             "table_font_size_pt": [8.0, 9.0, 10.0, 11.0, 12.0],
             "caption_font_size_pt": [8.0, 9.0, 10.0, 11.0, 12.0],
             "line_spacing": line_spacing,
+            "normal_before_twips": normal_before_twips,
+            "normal_after_twips": normal_after_twips,
+            "normal_tab_stops": normal_tab_stops,
             "body_alignment": "both",
             "table_caption_position": "above",
             "figure_caption_position": "below",
@@ -252,6 +268,7 @@ def extract_profile_from_template(template_path: str) -> Dict[str, Any]:
             "require_table_list": False,
             "require_figure_list": False,
             "academic_table_borders": True,
+            "require_native_captions": True,
         }
 
 
@@ -566,6 +583,9 @@ class DocumentLayoutAuditor:
         paragraphs = self.doc_tree.findall(".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p")
         align_counts = {}
         line_spacing_counts = {}
+        before_spacing_counts = {}
+        after_spacing_counts = {}
+        tab_stop_counts = {}
         unjustified_body_count = 0
 
         for p in paragraphs:
@@ -588,10 +608,21 @@ class DocumentLayoutAuditor:
             # Spacing
             spacing = pPr.find(f"{{{NS['w']}}}spacing")
             if spacing is not None:
+                before = spacing.attrib.get(f"{{{NS['w']}}}before", "0")
+                after = spacing.attrib.get(f"{{{NS['w']}}}after", "0")
+                before_spacing_counts[before] = before_spacing_counts.get(before, 0) + 1
+                after_spacing_counts[after] = after_spacing_counts.get(after, 0) + 1
                 line_val = spacing.attrib.get(f"{{{NS['w']}}}line")
                 if line_val and line_val.isdigit():
                     multiplier = round(float(line_val) / 240.0, 2)
                     line_spacing_counts[multiplier] = line_spacing_counts.get(multiplier, 0) + 1
+
+            tabs = pPr.find(f"{{{NS['w']}}}tabs")
+            if tabs is not None:
+                for tab in tabs.findall(f"{{{NS['w']}}}tab"):
+                    pos = tab.attrib.get(f"{{{NS['w']}}}pos", "")
+                    if pos:
+                        tab_stop_counts[pos] = tab_stop_counts.get(pos, 0) + 1
 
         if unjustified_body_count > 5:
             self.findings.append({
@@ -618,6 +649,9 @@ class DocumentLayoutAuditor:
         return {
             "alignment_distribution": align_counts,
             "line_spacing_distribution": line_spacing_counts,
+            "before_spacing_twips": before_spacing_counts,
+            "after_spacing_twips": after_spacing_counts,
+            "tab_stop_distribution_twips": tab_stop_counts,
             "unjustified_body_paragraphs": unjustified_body_count,
         }
 
@@ -683,12 +717,32 @@ class DocumentLayoutAuditor:
         figure_captions_count = 0
         misplaced_table_captions = 0
         misplaced_figure_captions = 0
+        native_caption_fields = 0
+        plain_caption_paragraphs = []
+
+        # Scan every paragraph, including paragraphs inside table cells.
+        for paragraph in self.doc_tree.findall(f".//{{{NS['w']}}}p"):
+            p_text = "".join(paragraph.itertext()).strip()
+            field_texts = [instr.text or "" for instr in paragraph.findall(f".//{{{NS['w']}}}instrText")]
+            field_texts.extend(
+                field.attrib.get(f"{{{NS['w']}}}instr", "")
+                for field in paragraph.findall(f".//{{{NS['w']}}}fldSimple")
+            )
+            has_seq = any(
+                re.search(r"\bSEQ\s+(?:Table|Tabel|Figure|Gambar)\b", text, re.I)
+                for text in field_texts
+            )
+            is_caption_text = bool(table_caption_pat.match(p_text) or figure_caption_pat.match(p_text))
+            if has_seq:
+                native_caption_fields += 1
+            elif is_caption_text:
+                plain_caption_paragraphs.append(p_text)
 
         if body is not None:
             children = list(body)
             for idx, child in enumerate(children):
                 tag = child.tag.split("}")[-1]
-                
+
                 # Check Table Caption Placement (Must be ABOVE table)
                 if tag == "tbl":
                     prev_is_caption = False
@@ -748,6 +802,15 @@ class DocumentLayoutAuditor:
                 "remediation": "Pindahkan paragraf caption gambar tepat di bawah gambar bersangkutan.",
             })
 
+        if self.profile.get("require_native_captions") and plain_caption_paragraphs:
+            self.findings.append({
+                "category": "Captions / Native Word Fields",
+                "severity": "FAIL",
+                "title": f"Caption Manual Terdeteksi ({len(plain_caption_paragraphs)} paragraf)",
+                "detail": "Caption tabel/gambar harus dibuat dengan References -> Insert Caption agar penomoran, cross-reference, dan daftar tabel/gambar tetap otomatis.",
+                "remediation": "Ganti caption manual dengan References -> Insert Caption, lalu gunakan Update Field untuk memperbarui nomor.",
+            })
+
         if self.profile.get("require_toc") and not has_toc:
             self.findings.append({
                 "category": "References / Table of Contents",
@@ -783,6 +846,8 @@ class DocumentLayoutAuditor:
             "figure_captions_count": figure_captions_count,
             "misplaced_table_captions": misplaced_table_captions,
             "misplaced_figure_captions": misplaced_figure_captions,
+            "native_caption_fields": native_caption_fields,
+            "plain_caption_paragraphs": plain_caption_paragraphs[:20],
         }
 
     def _audit_equations(self) -> Dict[str, Any]:
@@ -1051,6 +1116,8 @@ def format_text_report(audit: Dict[str, Any]) -> str:
     para = audit["paragraph"]
     lines.append(f"   Alignment Distribution : {para['alignment_distribution']}")
     lines.append(f"   Line Spacing Ratios    : {para['line_spacing_distribution']}")
+    lines.append(f"   Before/After Spacing   : {para['before_spacing_twips']} / {para['after_spacing_twips']} twips")
+    lines.append(f"   Tab Stops              : {para['tab_stop_distribution_twips']}")
     if para["unjustified_body_paragraphs"] > 0:
         lines.append(f"   [FAIL] {para['unjustified_body_paragraphs']} body paragraphs are not Justified (rata kanan-kiri).")
     else:
@@ -1074,6 +1141,9 @@ def format_text_report(audit: Dict[str, Any]) -> str:
     cap = audit["captions"]
     lines.append(f"   Table Captions Count  : {cap['table_captions_count']}")
     lines.append(f"   Figure Captions Count : {cap['figure_captions_count']}")
+    lines.append(f"   Native Word Caption Fields: {cap['native_caption_fields']}")
+    if cap.get("plain_caption_paragraphs"):
+        lines.append(f"   [FAIL] Manual caption paragraphs: {len(cap['plain_caption_paragraphs'])}")
     lines.append(f"   Table of Contents     : {'[PASS] Present' if cap['has_table_of_contents'] else '[FAIL] Missing'}")
     lines.append(f"   List of Tables        : {'[PASS] Present' if cap['has_table_list'] else '[WARN] Not detected'}")
     lines.append(f"   List of Figures       : {'[PASS] Present' if cap['has_figure_list'] else '[WARN] Not detected'}")
@@ -1148,6 +1218,10 @@ def main():
         help="Path to a reference template (.docx/.dotx) to automatically extract formatting rules (margins, fonts, columns)",
     )
     parser.add_argument(
+        "--template-rules-output",
+        help="Markdown template contract path (default: <template>-rules.md)",
+    )
+    parser.add_argument(
         "--config",
         help="Path to a custom JSON profile configuration file",
     )
@@ -1209,6 +1283,13 @@ def main():
         help="Mandate presence of an automatic List of Figures",
     )
     parser.add_argument(
+        "--no-native-caption-check",
+        dest="require_native_captions",
+        action="store_false",
+        default=None,
+        help="Allow manually typed caption text (use only when the template explicitly requires it)",
+    )
+    parser.add_argument(
         "--min-dpi",
         type=float,
         help="Minimum image DPI threshold (default: 200.0)",
@@ -1221,6 +1302,12 @@ def main():
     # Determine base profile
     custom_profile = None
     if args.template:
+        from template_rules import extract as extract_template_rules, render as render_template_rules
+
+        template_path = Path(args.template).resolve()
+        rules_path = Path(args.template_rules_output).resolve() if args.template_rules_output else template_path.with_name(f"{template_path.stem}-rules.md")
+        rules_path.write_text(render_template_rules(extract_template_rules(template_path)), encoding="utf-8")
+        print(f"Template rules saved to: {rules_path}")
         custom_profile = extract_profile_from_template(args.template)
     elif args.config:
         with open(args.config, "r", encoding="utf-8") as f:
@@ -1250,6 +1337,8 @@ def main():
         overrides["require_table_list"] = args.require_table_list
     if args.require_figure_list is not None:
         overrides["require_figure_list"] = args.require_figure_list
+    if args.require_native_captions is not None:
+        overrides["require_native_captions"] = args.require_native_captions
     if args.min_dpi:
         overrides["min_image_dpi"] = args.min_dpi
 

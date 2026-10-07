@@ -244,8 +244,9 @@ class RedliningValidator:
                             content_lines.append(line)
                     return "\n".join(content_lines)
 
-        except (subprocess.CalledProcessError, FileNotFoundError, Exception):
-            pass
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            if self.verbose:
+                print(f"git diff unavailable: {e}")
 
         return None
 

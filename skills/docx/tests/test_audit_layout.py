@@ -14,6 +14,7 @@ from PIL import Image, ImageFilter
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from audit_layout import DocumentLayoutAuditor, calculate_blur_variance, extract_profile_from_template, PROFILES
+from template_rules import extract as extract_template_rules, render as render_template_rules
 
 
 class TestLayoutAuditor(unittest.TestCase):
@@ -95,6 +96,31 @@ class TestLayoutAuditor(unittest.TestCase):
         finally:
             if temp_path.exists():
                 temp_path.unlink()
+
+    def test_template_rules_report_records_observed_contract(self):
+        bio = io.BytesIO()
+        with zipfile.ZipFile(bio, "w") as zf:
+            doc_xml = """<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:body><w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Chapter</w:t></w:r></w:p>
+              <w:p><w:r><w:fldSimple w:instr="SEQ Figure \\* ARABIC"/><w:t>Figure 1</w:t></w:r></w:p>
+              <w:sectPr><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body>
+            </w:document>"""
+            styles_xml = """<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="Heading 1"/><w:rPr><w:rFonts w:ascii="Arial"/><w:sz w:val="28"/></w:rPr></w:style>
+            </w:styles>"""
+            zf.writestr("word/document.xml", doc_xml)
+            zf.writestr("word/styles.xml", styles_xml)
+        bio.seek(0)
+        temp_path = Path("test_template_rules.docx").resolve()
+        temp_path.write_bytes(bio.read())
+        try:
+            data = extract_template_rules(temp_path)
+            report = render_template_rules(data)
+            self.assertEqual(data["tables"], 0)
+            self.assertIn("Heading 1", report)
+            self.assertIn("Use Word's **References → Insert Caption**", report)
+        finally:
+            temp_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

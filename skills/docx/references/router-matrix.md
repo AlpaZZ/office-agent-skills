@@ -2,6 +2,16 @@
 
 This reference guide provides the decision criteria and execution pathways for selecting the correct tool in the office automation suite. Follow this matrix before initiating document creation or editing.
 
+## 0. Template gate
+
+Before any DOCX authoring or formatting change, ask whether a `.docx`/`.dotx` template, institutional guide, or example document exists. If one exists, inspect the complete package and create a contract first:
+
+```bash
+python scripts/template_rules.py template.docx -o template-rules.md
+```
+
+If none exists, ask the user to choose a baseline such as APA 7, the `general` profile, or an institutional standard. Record that choice before formatting.
+
 ---
 
 ## 1. Decision Matrix Overview
@@ -82,17 +92,17 @@ custom covers, modern layouts, TOC                                     Track Cha
   - Node.js script using `docx` or `pptxgenjs`.
 * **Gotchas**: Always verify with `soffice.py` + `pdftoppm` for visual QA.
 
-### Pathway 5: Deep Legal Redlining & Live Zotero Surgery (Raw OpenXML)
+### Pathway 5: Deep Legal Redlining & Live Zotero/Mendeley Surgery (Raw OpenXML)
 * **When to use**:
   - Existing `.docx` file with tracked changes (`<w:ins>`, `<w:del>`) and comments.
-  - Preserving or injecting live Zotero `CSL_CITATION` field codes (`<w:fldChar>`).
+  - Preserving live Zotero or legacy Mendeley `CSL_CITATION` field codes (`<w:fldChar>`).
 * **Tooling**:
   - `scripts/merge_runs.py` (coalesce fragmented text runs).
   - `scripts/comment.py` (add native Office comments).
   - `scripts/zotero/inspect_zotero.py` (scan active citations).
   - `scripts/zotero/inject_zotero.py` (insert new Zotero CSL field code).
   - `scripts/zotero/validate_zotero.py` (verify field structure).
-* **Word Refresh**: The human author clicks **Zotero → Refresh** in the Word Ribbon to re-index all numbers.
+* **Word Refresh**: The human author refreshes the owning manager in Word: **Zotero → Refresh** or **Mendeley Cite → refresh/update**.
 
 ### Pathway 6: Reference & Citation Verification (Anti-Hallucination)
 * **When to use**:
@@ -110,10 +120,12 @@ custom covers, modern layouts, TOC                                     Track Cha
 
 ## 3. Unified Verification Gate
 
-Every output document must pass verification:
+Run the checks that apply to the output:
 1. **Schema Integrity**: `python scripts/office/validate.py out.docx`
-2. **Formula Integrity (Excel)**: `python scripts/recalc.py out.xlsx` (must show zero errors)
-3. **Zotero Integrity (if citations present)**: `python scripts/zotero/validate_zotero.py out.docx`
-4. **Citation Authenticity**: `python scripts/citations/verify_citations.py out.docx` (zero hallucinated citations)
-5. **Visual Layout QA**: Render to PDF via `soffice.py` and inspect images via `pdftoppm`.
-6. **Publication & Layout Linting**: `python scripts/audit_layout.py out.docx --profile skripsi-id` (or with `--template template.dotx`)
+2. **Template/Layout Contract**: `python scripts/audit_layout.py out.docx --template template.dotx` when a template exists.
+3. **Final DOCX Quality**: `python scripts/docx_quality.py out.docx --template template.dotx --fix-fields --render-dir qa-render`.
+4. **Native Captions**: confirm captions use Word `SEQ` fields and the correct placement.
+5. **Citation Authenticity**: run `scripts/citations/verify_citations.py` when citations or identifiers exist; it reads Zotero and Mendeley fields.
+6. **Zotero Integrity**: run `scripts/zotero/validate_zotero.py` only when Zotero fields exist.
+7. **Formula Integrity (Excel)**: `python scripts/recalc.py out.xlsx` for workbooks.
+8. **Visual Layout QA**: inspect the PDF produced by `docx_quality.py` whenever visual layout is part of the request.

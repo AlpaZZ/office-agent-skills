@@ -17,7 +17,7 @@ Large Language Models frequently invent convincing but nonexistent citations or 
 ## When to Use
 
 - Verifying reference lists in research papers, theses, or technical reports.
-- Checking Word documents (`.docx`) containing native Zotero field codes (`ADDIN ZOTERO_ITEM CSL_CITATION`).
+- Checking Word documents (`.docx`) containing native Zotero or legacy Mendeley Desktop CSL fields.
 - Validating BibTeX libraries (`.bib`) before submitting papers to journals.
 - Auditing Markdown (`.md`), LaTeX (`.tex`), or text drafts for broken URLs and hallucinated DOIs.
 - Running automated CI/CD citation checks on manuscripts.

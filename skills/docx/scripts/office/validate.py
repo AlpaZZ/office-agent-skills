@@ -150,15 +150,19 @@ def main():
             print(f"Error: Validation not supported for file type {family}")
             sys.exit(1)
 
+    repaired = False
     if args.auto_repair:
         total_repairs = sum(v.repair() for v in validators)
-        if total_repairs:
-            print(f"Auto-repaired {total_repairs} issue(s)")
-            if packed_file is not None:
-                rezip(unpacked_dir, packed_file)
-                print(f"Wrote repaired file to {packed_file}")
+        repaired = total_repairs > 0
+        if repaired:
+            print(f"Auto-repaired {total_repairs} issue(s) in the staging copy")
 
-    success = all([v.validate() for v in validators])
+    success = all(v.validate() for v in validators)
+    if success and repaired and packed_file is not None:
+        backup = packed_file.with_suffix(packed_file.suffix + ".bak")
+        backup.write_bytes(packed_file.read_bytes())
+        rezip(unpacked_dir, packed_file)
+        print(f"Wrote repaired file to {packed_file} (backup: {backup})")
 
     if temp_dir_ctx is not None:
         temp_dir_ctx.cleanup()

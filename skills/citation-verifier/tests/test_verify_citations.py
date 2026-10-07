@@ -20,6 +20,7 @@ from verify_citations import (
     scan_raw_text,
     extract_from_bibtex,
     CitationVerifier,
+    extract_mendeley_citations_from_docx,
 )
 
 
@@ -195,6 +196,33 @@ class TestCitationVerifier(unittest.TestCase):
         finally:
             if tpath.exists():
                 tpath.unlink()
+
+    def test_extract_mendeley_csl_field(self):
+        import json
+        import tempfile
+        import zipfile
+
+        field = {
+            "citationItems": [{
+                "itemData": {
+                    "DOI": "10.1234/example",
+                    "title": "Mendeley field paper",
+                    "author": [{"family": "Doe", "given": "Jane"}],
+                    "issued": {"date-parts": [[2024]]},
+                }
+            }]
+        }
+        xml = f"<w:instrText>ADDIN CSL_CITATION {json.dumps(field)} CSL_CITATION</w:instrText>"
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tf:
+            path = Path(tf.name)
+        try:
+            with zipfile.ZipFile(path, "w") as zf:
+                zf.writestr("word/document.xml", xml)
+            items = extract_mendeley_citations_from_docx(path)
+            self.assertEqual(items[0]["source"], "Mendeley (word/document.xml)")
+            self.assertEqual(items[0]["doi"], "10.1234/example")
+        finally:
+            path.unlink(missing_ok=True)
 
     def test_pmid_cache_title_verification(self):
         verifier = CitationVerifier(no_cache=False, timeout=10)

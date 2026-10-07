@@ -12,7 +12,7 @@ The `skills/` directory contains five unified skills:
 
 | Skill | Target Files | Primary Function |
 | :--- | :--- | :--- |
-| [`docx`](skills/docx/) | `.docx`, `.dotx` | Unified Word engine: layout & visual audit (`audit_layout.py`), brand profile extraction & generation, LaTeX math via Pandoc, live Zotero field codes, DataFrame tables, and tracked changes. |
+| [`docx`](skills/docx/) | `.docx`, `.dotx` | Unified Word engine: template contract extraction (`template_rules.py`), layout & visual audit (`audit_layout.py`), final quality gate (`docx_quality.py`), brand profile extraction & generation, LaTeX math via Pandoc, live Zotero/Mendeley fields, DataFrame tables, and tracked changes. |
 | [`pptx`](skills/pptx/) | `.pptx`, `.potx` | Unified PowerPoint engine: brand profile extraction & on-brand deck generation, scratch presentations via pptxgenjs, slide thumbnails (`thumbnail.py`), and chart validation. |
 | [`xlsx`](skills/xlsx/) | `.xlsx`, `.xltx`, `.xlsm`, `.csv` | Unified Excel engine: brand profile extraction & on-brand workbook fill, openpyxl modeling, formula verification via headless LibreOffice (`recalc.py`), and pandas data pipelines. |
 | [`citation-verifier`](skills/citation-verifier/) | `.docx`, `.bib`, `.md`, `.tex`, `.txt` | Checks references against CrossRef, arXiv, PubMed, and Open Library to detect fake DOIs and mismatched titles. |
@@ -24,6 +24,7 @@ The `skills/` directory contains five unified skills:
 
 ### Document Layout, Typography & Visual Linter
 - **Comprehensive Document Linter**: Audits Word documents (`.docx`) against Indonesian Skripsi (UI, 4-4-3-3 cm margins), SINTA 2 Journal (JIKI UI, 2-column layout), or APA 7th standards using `audit_layout.py`.
+- **Final DOCX Quality Gate**: Checks template drift, page-flow, cross-references, captions, accessibility, notes, headers/footers, tables, style hygiene, field refresh, and optional PDF rendering using `docx_quality.py`.
 - **Image Quality & Blurriness Detection**: Calculates Effective DPI from physical print extents (<150 DPI critical failure, >=300 DPI print quality) and measures sharpness via Laplacian variance to flag blurry or stretched figures.
 - **Academic Equation Integrity**: Ensures all mathematical formulas are native Word OMML / LaTeX equations (`<m:oMath>`), flagging formulas mistakenly pasted as raster screenshots.
 - **Caption & Hierarchy Placement**: Enforces table captions placed ABOVE tables, figure captions placed BELOW figures, and flags unstyled bold paragraphs masquerading as headings.
@@ -70,6 +71,10 @@ The `skills/` directory contains five unified skills:
 Install the required Python packages:
 ```bash
 pip install -r requirements.txt
+
+Install the Node.js generators used by the DOCX and PPTX skills:
+
+    npm install
 ```
 
 ### Setup in Antigravity

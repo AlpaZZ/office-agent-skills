@@ -12,14 +12,68 @@ The definitive Microsoft Word (`.docx` / `.dotx`) engine for AI coding agents. C
 |---|---|---|
 | **On-Brand Corporate** | `scripts/brandkit/` (`scripts/cli.py`) | Preserving company brand profiles, official fonts, colors, and layout shells fail-closed from templates. |
 | **Layout & Visual Linter** | `scripts/audit_layout.py` | Auditing margins (4-4-3-3 cm skripsi / 3-3-3-3 cm journal), fonts, line spacing, image DPI (<150 DPI), Laplacian blur, caption positions, and TOC. |
+| **Template Contract** | `scripts/template_rules.py` | Reads the complete `.docx`/`.dotx` package and writes an observed formatting contract in Markdown before any edits. |
+| **Final Quality Gate** | `scripts/docx_quality.py` | Checks template drift, heading/page flow, broken cross-references, captions/TOC fields, accessibility, notes, headers/footers, table quality, style hygiene, field refresh, and optional rendering. |
 | **Academic & Math** | `scripts/pandoc/compile_academic.py` | Papers with LaTeX math formulas (`$$...$$`), footnotes, and linked Zotero/BibTeX bibliographies. |
 | **Citation Verification** | `scripts/citations/verify_citations.py` | Auditing documents for fake/hallucinated DOIs, broken URLs, and metadata mismatches against CrossRef/arXiv/PubMed. |
-| **Zotero Citations** | `scripts/zotero/` | Inspecting, injecting, or validating live dynamic `ADDIN ZOTERO_ITEM CSL_CITATION` fields without unlinking. |
+| **Zotero / Mendeley Citations** | `scripts/zotero/`, citation verifier | Inspecting Zotero fields and validating Zotero or legacy Mendeley Desktop `CSL_CITATION` fields without unlinking. |
 | **Data Science Tables** | `scripts/data/dataframe_to_word.py` | Injecting CSV, Excel, or JSON data into styled, zebra-striped Word tables with right-aligned numbers. |
 | **Editorial Scratch** | `docx-js` (Node.js script) | New documents from scratch requiring bespoke visual layouts, cover pages, and automated TOCs. |
 | **Legal Redline** | Raw OpenXML (`<w:ins>`, `<w:del>`) | Contract reviews, tracked revisions, and multi-file comments (`scripts/comment.py`). |
 
 > Detailed decision logic and routing criteria are in [`references/router-matrix.md`](references/router-matrix.md).
+
+## 0. Mandatory Template-First Contract
+
+Before creating or changing a Word document, ask: **"Apakah ada template Word, pedoman format, atau contoh dokumen yang wajib diikuti? Jika ada, kirimkan file `.docx`/`.dotx` atau pedomannya."**
+
+When a template or reference document exists, do this before authoring:
+
+1. Read the complete Word package, including all XML parts, styles, numbering, headers, footers, section breaks, fields, tables, images, and embedded settings. Do not infer rules from a screenshot alone.
+2. Generate a reviewable contract: `python scripts/template_rules.py template.docx -o template-rules.md`.
+3. Treat `template-rules.md` as the source of truth for allowed and forbidden formatting. Preserve values that are present in the template and ask before introducing a value that is absent or ambiguous.
+4. Use the template shell and Word styles. Do not rebuild its appearance with manual font changes, blank paragraphs, typed numbering, or typed captions.
+5. After editing, run the schema validator, the template-based layout audit, and a rendered visual inspection. Do not return the document while any format, overflow, field, or corruption check fails.
+
+If the user confirms that no template or guide exists, ask which baseline to use (for example, APA 7, the `general` profile, or an institutional standard) and record that choice before formatting. Do not silently choose a template.
+
+## 0.1 Writing and Human Voice Contract
+
+DOCX formatting does not replace editorial review. Apply the combined humanizer and antislop-copywriting rules to prose, headings, captions, tables, and callouts:
+
+The detailed checklist is in [`references/prose-rules.md`](references/prose-rules.md).
+
+- Preserve every supported fact from the source. Never invent a number, name, date, quote, citation, result, feature, or testimonial. If a detail is missing, ask for it or write the narrower claim.
+- Match the reader and the document type. Technical, academic, legal, and factual documents use plain, precise language. When the user supplies a writing sample, match its vocabulary, sentence length, rhythm, and punctuation.
+- State the point directly. Remove staged openers, fake objections, empty transitions, aphorisms, generic conclusions, inflated significance, sales language, and filler phrases.
+- Prefer concrete subjects and active verbs when the actor is known. Keep passive voice when the actor is unknown, irrelevant, or deliberately withheld.
+- Use the number of examples the content requires. Do not force groups of three, repeated sentence openings, false ranges, or synonym cycling.
+- Avoid mechanical formatting in prose: no bolding every key term, all-caps emphasis, decorative emojis, excessive quotation marks, or headings that merely repeat the next sentence.
+- Use paragraphs for explanation. Use numbered or bulleted lists only for real sequences, sets of requirements, options, or items that are easier to scan point by point.
+- Do not rewrite quotations, titles, code, commands, paths, URLs, field codes, or source data as if they were prose.
+- Read the document aloud before delivery. Vary sentence length, remove repeated closers, and check that each sentence adds information.
+
+### Prose delivery gate
+
+Before returning a DOCX, perform three passes: draft the content, audit it for AI patterns and unsupported claims, then revise once more. The final pass must confirm that the document has a clear voice, no fabricated specifics, no unexplained claims, no generic AI vocabulary, no unnecessary list structure, and no em or en dashes in authored prose. This gate does not alter source quotations or Word field syntax.
+
+### Word authoring rules
+
+- Prefer continuous paragraphs. Use bullets or numbered lists only when the content is truly a list, a sequence, or a requirement that benefits from point-by-point scanning.
+- Use semantic Heading styles for chapters and subchapters, with a Word-generated Table of Contents when the document has navigable sections.
+- Use Word's **References → Insert Caption** for every table and figure. Use **Cross-reference** and **Insert Table of Figures** instead of typed numbers or labels.
+- Preserve page size, margins, font family, font size, paragraph spacing, line spacing, tabs, indents, headers, footers, page numbers, and multilevel numbering from the template or approved baseline.
+- Keep images and tables within the printable area. Check aspect ratio, effective DPI, row splitting, repeated headers, and page breaks.
+- Keep equations as native OMML or editable Word equations. Keep citations as Zotero/Mendeley fields when those fields are present.
+- Validate that the output opens as a valid Office package and that fields, styles, numbering, captions, tables, images, headers, and footers remain intact.
+
+### Mandatory LaTeX equation contract
+
+- Write every new mathematical expression in LaTeX source. Use inline math such as `$E=mc^2$` and block math such as `$$\sum_{i=1}^{n} x_i$$`.
+- Compile the source through `scripts/pandoc/compile_academic.py`, which converts LaTeX into editable Word OMML equations.
+- Do not author formulas as screenshots, raster images, Unicode lookalikes, manually spaced text, or a mixture of unrelated equation formats.
+- After conversion, verify that the DOCX contains native `<m:oMath>` or `<m:oMathPara>` elements and that no formula was flattened into an image.
+- If the user provides a formula in another format, convert it to LaTeX before inserting it and preserve the original meaning.
 
 ---
 
@@ -61,10 +115,13 @@ python scripts/audit_layout.py manuscript.docx --profile skripsi-id
 # 2. Audit academic journal format (JIKI UI / SINTA 2: 2 columns, 3-3-3-3 cm margins, single space)
 python scripts/audit_layout.py manuscript.docx --profile jiki-journal
 
-# 3. Auto-extract layout criteria directly from any reference template (.docx/.dotx)
+# 3. Extract a complete template contract before editing
+python scripts/template_rules.py AuthorGuideline_JIKI.docx -o template-rules.md
+
+# 4. Auto-extract layout criteria directly from any reference template (.docx/.dotx)
 python scripts/audit_layout.py manuscript.docx --template AuthorGuideline_JIKI.docx
 
-# 4. Explicit CLI overrides for custom guidelines
+# 5. Explicit CLI overrides for custom guidelines
 python scripts/audit_layout.py manuscript.docx \
   --margins 4.0 4.0 3.0 3.0 \
   --font "Times New Roman" \
@@ -75,8 +132,14 @@ python scripts/audit_layout.py manuscript.docx \
   --require-toc \
   --min-dpi 300
 
-# 5. Export structured JSON for automated pipelines
+# 6. Export structured JSON for automated pipelines
 python scripts/audit_layout.py manuscript.docx --format json -o layout_audit.json
+
+# 7. Run the final deterministic quality gate, compare against the template,
+#    enable Word field refresh, and produce a PDF render for visual inspection
+python scripts/docx_quality.py manuscript.docx \
+  --template template.docx --fix-fields --render-dir qa-render \
+  --format json --output docx-quality.json
 ```
 
 **Checked Dimensions & Standards**:
@@ -89,6 +152,13 @@ python scripts/audit_layout.py manuscript.docx --format json -o layout_audit.jso
 - **Image Quality & Blurriness**: Effective DPI calculation (<150 DPI critical failure), Laplacian blur variance, aspect ratio distortion (squished/stretched images).
 - **Table Formatting**: Column overflow beyond printable margin width, academic three-line tables (no vertical borders), header repeat.
 - **Header & Footer**: Page numbering configuration.
+
+The final gate is complementary to the layout linter. It catches template
+drift, headings that can orphan on a page, broken REF/PAGEREF fields, missing
+alt text and table header markers, inconsistent notes, stale headers/footers,
+direct-formatting style drift, and unsafe field refresh state. A non-zero exit
+code means a blocking accessibility or integrity finding remains. Rendering
+requires LibreOffice; when it is unavailable, the report records that fact.
 
 ---
 
@@ -126,9 +196,9 @@ python scripts/citations/verify_citations.py references.bib --format json -o aud
 
 ---
 
-## 5. Dynamic Zotero CSL Field Code Management
+## 5. Dynamic Zotero and Mendeley CSL Field Management
 
-Never flatten Zotero citations into static text. Manage dynamic OpenXML field codes (`ADDIN ZOTERO_ITEM CSL_CITATION`) directly:
+Never flatten managed citations into static text. Keep dynamic OpenXML field codes (`ADDIN ZOTERO_ITEM CSL_CITATION` or legacy Mendeley `ADDIN CSL_CITATION`) intact. The citation verifier extracts both formats for DOI validation:
 
 ```bash
 # 1. Inspect existing citations in a document
@@ -149,7 +219,9 @@ python scripts/zotero/inject_zotero.py manuscript.docx \
 python scripts/zotero/validate_zotero.py updated_manuscript.docx
 ```
 
-After modifying citations, the human author simply opens the document in Microsoft Word and clicks **Zotero → Refresh** in the Ribbon. Detailed guide in [`references/zotero.md`](references/zotero.md).
+Modern Mendeley Cite stores part of its library metadata in the Word web-extension package. The verifier validates any DOI, PMID, arXiv ID, or URL exposed by the document and does not rewrite the Mendeley fields.
+
+After modifying citations, the human author opens the document in Microsoft Word and refreshes the owning manager: **Zotero → Refresh** or **Mendeley Cite → refresh/update**. Detailed guide in [`references/zotero.md`](references/zotero.md).
 
 ---
 
@@ -196,15 +268,15 @@ python scripts/office/validate.py out.docx --original doc.docx
 
 ---
 
-## 9. Unified Verification Gate
+## 9. Verification Gate
 
-Every output document must pass verification before returning to the user:
-1. **Schema Integrity**: `python scripts/office/validate.py out.docx`
-2. **Layout & Standards Linting**: `python scripts/audit_layout.py out.docx --profile skripsi-id` (or `--template guideline.docx`)
-3. **Citation Authenticity**: `python scripts/citations/verify_citations.py out.docx` (zero hallucinated citations)
-4. **Zotero Integrity (if citations present)**: `python scripts/zotero/validate_zotero.py out.docx`
-5. **Visual Layout QA**: Render to PDF via `soffice.py` and inspect images via `pdftoppm`.
+Run the smallest gate that matches the output:
+1. Always run schema validation: `python scripts/office/validate.py out.docx`.
+2. Run `audit_layout.py` only when the user supplied a layout standard or template.
+3. Run citation verification only when the document contains references, DOI/PMID/arXiv IDs, or URLs.
+4. Run Zotero validation only when Zotero fields are present.
+5. Render with LibreOffice only when visual layout is part of the request.
 
 ## Dependencies
 
-`docx` (npm) · `pandoc` · `python-docx` · `openpyxl` · `Pillow` · `numpy` · LibreOffice (`soffice`) · `pdftoppm` (Poppler)
+`docx` (npm) · `pandoc` · `python-docx` · `openpyxl` · `Pillow` · `numpy` · `pandas` · `markitdown` · LibreOffice (`soffice`) · `pdftoppm` (Poppler)

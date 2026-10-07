@@ -52,7 +52,7 @@ def load_data(file_path: Path, sheet_name: str | None = None):
             if not rows:
                 return [], []
             return rows[0], rows[1:]
-    elif suffix in (".xlsx", ".xls"):
+    elif suffix == ".xlsx":
         import openpyxl
         wb = openpyxl.load_workbook(file_path, data_only=True)
         ws = wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames else wb.active
@@ -62,6 +62,8 @@ def load_data(file_path: Path, sheet_name: str | None = None):
         headers = [str(c or "") for c in all_rows[0]]
         data = [[str(c if c is not None else "") for c in row] for row in all_rows[1:]]
         return headers, data
+    elif suffix == ".xls":
+        raise ValueError("Legacy .xls is not supported; convert it to .xlsx first")
     elif suffix == ".json":
         with open(file_path, "r", encoding="utf-8") as f:
             items = json.load(f)
