@@ -187,6 +187,10 @@ Detects fake, broken, or mismatched citations in Word documents, BibTeX files, a
 # 1. Audit a Word document (checks Zotero CSL XML and body references)
 python scripts/citations/verify_citations.py manuscript.docx
 
+# 2b. Prove that cited sentences have source evidence before delivery
+python scripts/citations/verify_citations.py manuscript.docx \
+  --claim-audit --strict-claims --format markdown -o claim-audit.md
+
 # 2. Generate a clean Markdown audit report for peer review
 python scripts/citations/verify_citations.py draft.md --format markdown -o audit_report.md
 
@@ -219,7 +223,7 @@ python scripts/zotero/inject_zotero.py manuscript.docx \
 python scripts/zotero/validate_zotero.py updated_manuscript.docx
 ```
 
-Modern Mendeley Cite stores part of its library metadata in the Word web-extension package. The verifier validates any DOI, PMID, arXiv ID, or URL exposed by the document and does not rewrite the Mendeley fields.
+Modern Mendeley Cite stores part of its library metadata in the Word web-extension package. The verifier validates any DOI, PMID, arXiv ID, or URL exposed by the document and does not rewrite the Mendeley fields. When prose makes a cited claim, run `--claim-audit --strict-claims`: every cited sentence must map to a source identifier and retrieved evidence, otherwise delivery stops with `UNMAPPED_CITATION`, `EVIDENCE_UNAVAILABLE`, or `ABSTRACT_NO_SUPPORT`. Abstract overlap is evidence triage, not proof of detailed or causal claims; those require full-text page/section review.
 
 After modifying citations, the human author opens the document in Microsoft Word and refreshes the owning manager: **Zotero → Refresh** or **Mendeley Cite → refresh/update**. Detailed guide in [`references/zotero.md`](references/zotero.md).
 

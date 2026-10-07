@@ -52,6 +52,10 @@ python scripts/verify_citations.py library.bib --format json --output audit.json
 
 # 4. Strict mode: exit code 1 on any failure or title mismatch
 python scripts/verify_citations.py paper.tex --strict
+
+# 5. Audit every cited sentence against retrieved abstract evidence
+python scripts/verify_citations.py manuscript.docx --claim-audit \
+  --strict-claims --format markdown --output claim-audit.md
 ```
 
 ### Options
@@ -60,6 +64,8 @@ python scripts/verify_citations.py paper.tex --strict
 - `-o, --output PATH`: Write report to file instead of stdout.
 - `--email EMAIL`: Contact email for the CrossRef polite API pool.
 - `--strict`: Return exit code 1 if any citation is missing or has a mismatched title.
+- `--claim-audit`: Map each cited sentence to evidence retrieved from the cited source. Numeric or author-year markers that cannot be mapped are reported as `UNMAPPED_CITATION`.
+- `--strict-claims`: Return exit code 1 unless every cited sentence reaches `ABSTRACT_SUPPORT`.
 - `--no-cache`: Force live API requests bypassing `.citation_cache.json`.
 - `--timeout SECONDS`: Network timeout per request (default: 10).
 
@@ -73,6 +79,19 @@ When verifying DOIs or arXiv papers with title metadata (e.g. from Zotero field 
 2. **`[WARN] METADATA_MISMATCH`**: Identifier exists, but the registry title differs significantly. This catches AI models that attach real DOIs to fake papers.
 3. **`[FAIL] NOT_FOUND`**: Identifier does not exist in the official registry.
 4. **`[ERR ] LOOKUP_ERROR`**: Temporary network failure or service downtime (never falsely marked as hallucinated).
+
+### Claim-to-evidence rule
+
+Identifier verification and claim verification are separate gates. With
+`--claim-audit`, each sentence containing a DOI, PMID, arXiv identifier,
+numeric marker, or author-year marker is audited. The verifier only emits
+`ABSTRACT_SUPPORT` when the identifier is mapped in the same sentence and the
+sentence has conservative lexical overlap with retrieved abstract evidence.
+It emits `ABSTRACT_NO_SUPPORT`, `EVIDENCE_UNAVAILABLE`, or
+`UNMAPPED_CITATION` otherwise. These statuses are intentionally conservative:
+they never prove that a detailed, causal, quantitative, or negative claim is
+true. Those claims still require reading the full paper and recording page or
+section evidence.
 
 ---
 

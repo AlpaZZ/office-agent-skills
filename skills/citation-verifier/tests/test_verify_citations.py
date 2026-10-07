@@ -21,10 +21,20 @@ from verify_citations import (
     extract_from_bibtex,
     CitationVerifier,
     extract_mendeley_citations_from_docx,
+    audit_claim_support,
 )
 
 
 class TestCitationVerifier(unittest.TestCase):
+    def test_claim_audit_requires_mapped_evidence(self):
+        results = [{"identifier": "10.1234/example", "evidence_text": "The model improves image classification accuracy on skin disease datasets."}]
+        supported = audit_claim_support("The model improves skin disease image classification accuracy (doi:10.1234/example).", results)
+        self.assertEqual(supported[0]["status"], "ABSTRACT_SUPPORT")
+        unmapped = audit_claim_support("The model cures cancer [1].", results)
+        self.assertEqual(unmapped[0]["status"], "UNMAPPED_CITATION")
+        unavailable = audit_claim_support("The model improves accuracy (doi:10.1234/example).", [{"identifier": "10.1234/example"}])
+        self.assertEqual(unavailable[0]["status"], "EVIDENCE_UNAVAILABLE")
+
     def test_normalize_title(self):
         t1 = "Searching for MobileNetV3!"
         self.assertEqual(normalize_title(t1), "searching for mobilenetv3")

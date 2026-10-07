@@ -168,6 +168,57 @@ def normalize_title(title: str) -> str:
     return t
 
 
+def _clean_evidence(value: str) -> str:
+    """Turn registry HTML/XML abstracts into comparable plain text."""
+    value = re.sub(r"<[^>]+>", " ", value or "")
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _content_tokens(value: str) -> Set[str]:
+    stop = {"about", "after", "also", "among", "because", "between", "could", "from", "have", "into", "more", "most", "other", "over", "such", "than", "their", "there", "these", "this", "those", "using", "were", "which", "with", "within", "would"}
+    return {x for x in re.findall(r"[a-z]{3,}", (value or "").lower()) if x not in stop}
+
+
+def audit_claim_support(text: str, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Conservatively map cited sentences to source abstracts.
+
+    A citation receives PASS only when its identifier is present in the same
+    sentence and the claim shares several content terms with retrieved source
+    evidence. Numeric/author-year citations remain UNMAPPED until a reference
+    map is supplied; this prevents metadata validity from being reported as
+    claim support.
+    """
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text or "") if s.strip()]
+    by_id = {str(r.get("identifier", "")).lower(): r for r in results if r.get("identifier")}
+    id_patterns = [re.compile(r"10\.\d{4,9}/[^\s\"'<>\)\]]+", re.I), re.compile(r"\bPMID[:\s]+\d{6,9}\b", re.I), re.compile(r"\barXiv[:\s]+\d{4}\.\d{4,5}(?:v\d+)?", re.I)]
+    out = []
+    for sentence in sentences:
+        identifiers = []
+        for pat in id_patterns:
+            identifiers.extend(_clean_trailing_punct(m.group(0).split(":", 1)[-1]) for m in pat.finditer(sentence))
+        has_marker = bool(identifiers or re.search(r"\[[0-9,;\s-]+\]|\([A-Z][A-Za-z-]+(?:\s+et al\.)?,?\s*\d{4}[a-z]?\)", sentence))
+        if not has_marker:
+            continue
+        matched = [by_id.get(i.lower()) for i in identifiers if i.lower() in by_id]
+        if not matched:
+            out.append({"sentence": sentence, "status": "UNMAPPED_CITATION", "evidence": [], "details": "Citation marker tidak dapat dipetakan ke identifier sumber."})
+            continue
+        claim_tokens = _content_tokens(sentence)
+        evidence = [r.get("evidence_text", "") for r in matched if r.get("evidence_text")]
+        if not evidence:
+            out.append({"sentence": sentence, "status": "EVIDENCE_UNAVAILABLE", "evidence": [r.get("identifier") for r in matched], "details": "Registry mengonfirmasi metadata, tetapi abstract/full text sumber tidak tersedia."})
+            continue
+        scores = []
+        for ev in evidence:
+            ev_tokens = _content_tokens(ev)
+            overlap = len(claim_tokens & ev_tokens)
+            scores.append(overlap / max(1, len(claim_tokens)))
+        best = max(scores)
+        status = "ABSTRACT_SUPPORT" if best >= 0.20 and max(len(claim_tokens), 1) >= 3 else "ABSTRACT_NO_SUPPORT"
+        out.append({"sentence": sentence, "status": status, "score": round(best, 3), "evidence": [r.get("identifier") for r in matched], "details": "Kecocokan leksikal terhadap abstract; verifikasi full text tetap diperlukan untuk klaim rinci."})
+    return out
+
+
 def check_domain_conflicts(tokens1: Set[str], tokens2: Set[str]) -> bool:
     """Detect if title 1 and title 2 belong to explicitly conflicting organ/disease topics."""
     for set_a, set_b in DOMAIN_CONFLICT_SETS:
@@ -452,6 +503,7 @@ class CitationVerifier:
                     "authors": authors[:5],
                     "venue": journal,
                     "year": year,
+                    "evidence_text": _clean_evidence(item.get("abstract", "")),
                     "title_similarity": score,
                     "details": detail,
                 }
@@ -567,6 +619,7 @@ class CitationVerifier:
                             "title": remote_title,
                             "authors": authors[:5],
                             "year": year,
+                            "evidence_text": _clean_evidence(entry.findtext("{http://www.w3.org/2005/Atom}summary", "")),
                             "title_similarity": score,
                             "details": detail,
                         }
@@ -644,6 +697,18 @@ class CitationVerifier:
                         remote_title = pdata.get("title", "")
                         authors_list = [a.get("name") for a in pdata.get("authors", []) if isinstance(a, dict) and "name" in a]
                         year = pdata.get("pubdate", "")[:4]
+                        evidence_text = ""
+                        try:
+                            est, ebody, _ = _fetch_url(
+                                f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id={clean_pmid}&rettype=abstract&retmode=xml",
+                                user_agent=self.user_agent,
+                                timeout=self.timeout,
+                            )
+                            if est == 200:
+                                eroot = ET.fromstring(ebody)
+                                evidence_text = _clean_evidence(" ".join(eroot.itertext()))
+                        except Exception:
+                            evidence_text = ""
 
                         overall, ident_st, meta_st, score, detail = evaluate_identity(
                             expected_title,
@@ -665,6 +730,7 @@ class CitationVerifier:
                             "authors": authors_list[:5],
                             "year": year,
                             "venue": pdata.get("source", ""),
+                            "evidence_text": evidence_text,
                             "title_similarity": score,
                             "details": detail,
                         }
@@ -1255,7 +1321,7 @@ def run_verification(citations: List[Dict[str, Any]], verifier: CitationVerifier
     return results
 
 
-def format_text_report(results: List[Dict[str, Any]], target_file: Path) -> str:
+def format_text_report(results: List[Dict[str, Any]], target_file: Path, claim_audit: Optional[List[Dict[str, Any]]] = None) -> str:
     """Format results into a clean ASCII terminal report safe for Windows cp1252."""
     lines = []
     lines.append("=" * 80)
@@ -1327,10 +1393,16 @@ def format_text_report(results: List[Dict[str, Any]], target_file: Path) -> str:
     lines.append("• It does NOT confirm that the cited paper supports the claim made in your text.")
     lines.append("• To verify claim validity, methodology, and dataset leakage, run research-reviewer.")
     lines.append("=" * 80)
+    if claim_audit:
+        lines.append("CLAIM-TO-EVIDENCE AUDIT:")
+        for claim in claim_audit:
+            lines.append(f"[{claim['status']}] {claim['sentence']}")
+            lines.append(f"    Evidence: {', '.join(claim.get('evidence', [])) or '-'} | {claim.get('details', '')}")
+        lines.append("=" * 80)
     return "\n".join(lines)
 
 
-def format_markdown_report(results: List[Dict[str, Any]], target_file: Path) -> str:
+def format_markdown_report(results: List[Dict[str, Any]], target_file: Path, claim_audit: Optional[List[Dict[str, Any]]] = None) -> str:
     """Format verification results as clean Markdown."""
     lines = []
     lines.append(f"# Citation Integrity Report: `{target_file.name}`\n")
@@ -1394,7 +1466,13 @@ def format_markdown_report(results: List[Dict[str, Any]], target_file: Path) -> 
 
         lines.append(f"| {idx} | {badge} | {c_type} | {ident_link} | {r.get('identifier_status', '-')} | {r.get('metadata_status', '-')} | {r.get('claim_status', 'UNCHECKED')} | {notes} |")
 
-    lines.append("\n> **Important Epistemic Note**: A verified citation confirms that the identifier resolves in an authoritative registry. It does **not** verify that the cited paper actually supports the propositions or claims made in your document. To verify claim validity, methodology, and dataset leakage, run `research-reviewer`.")
+    if claim_audit:
+        lines.append("\n## Claim-to-Evidence Audit\n")
+        lines.append("| Status | Sentence | Evidence | Details |")
+        lines.append("| :--- | :--- | :--- | :--- |")
+        for claim in claim_audit:
+            lines.append(f"| {claim['status']} | {claim['sentence'].replace('|', '/') } | {', '.join(claim.get('evidence', [])) or '-'} | {claim.get('details', '').replace('|', '/')} |")
+    lines.append("\n> **Epistemic rule**: registry resolution never proves claim support. `ABSTRACT_SUPPORT` only means the cited sentence has conservative lexical overlap with retrieved abstract evidence; full-text review is required for detailed, causal, quantitative, or negative claims.")
     return "\n".join(lines)
 
 
@@ -1411,6 +1489,8 @@ def main():
     parser.add_argument("--no-cache", action="store_true", help="Bypass local cache and query live APIs")
     parser.add_argument("--cache-file", help="Custom cache file location (default: .citation_cache.json)")
     parser.add_argument("--strict", action="store_true", help="Exit with code 1 if any citation is missing or mismatched")
+    parser.add_argument("--claim-audit", action="store_true", help="Map each cited sentence to retrieved source evidence; unmapped or unsupported claims are never marked as supported")
+    parser.add_argument("--strict-claims", action="store_true", help="Exit with code 1 unless every cited sentence has ABSTRACT_SUPPORT")
 
     args = parser.parse_args()
     input_path = Path(args.input_path).resolve()
@@ -1433,18 +1513,30 @@ def main():
         sys.exit(0)
 
     results = run_verification(citations, verifier)
+    claim_audit = []
+    if args.claim_audit or args.strict_claims:
+        claim_audit = audit_claim_support(extract_text_from_docx(input_path) if input_path.suffix.lower() in (".docx", ".dotx") else input_path.read_text(encoding="utf-8", errors="replace"), results)
+        by_id = {}
+        for claim in claim_audit:
+            for ident in claim.get("evidence", []):
+                by_id.setdefault(str(ident).lower(), []).append(claim["status"])
+        for result in results:
+            statuses = by_id.get(str(result.get("identifier", "")).lower(), [])
+            if statuses:
+                result["claim_status"] = "ABSTRACT_SUPPORT" if all(s == "ABSTRACT_SUPPORT" for s in statuses) else statuses[0]
 
     if args.format == "json":
         report = json.dumps({
             "target": str(input_path),
             "total": len(results),
             "results": results,
-            "disclaimer": "Citation resolution confirms registry existence, not claim validity.",
+            "claim_audit": claim_audit,
+            "disclaimer": "ABSTRACT_SUPPORT is conservative lexical evidence, not proof that every detail or causal claim is supported by the full paper.",
         }, indent=2)
     elif args.format == "markdown":
-        report = format_markdown_report(results, input_path)
+        report = format_markdown_report(results, input_path, claim_audit)
     else:
-        report = format_text_report(results, input_path)
+        report = format_text_report(results, input_path, claim_audit)
 
     if args.output:
         out_path = Path(args.output).resolve()
@@ -1456,8 +1548,9 @@ def main():
 
     has_hallucinations = any(r["status"] == "NOT_FOUND" for r in results)
     has_mismatches = any(r["status"] in ("METADATA_MISMATCH", "METADATA_PARTIAL") for r in results)
+    has_unsupported_claims = any(c["status"] != "ABSTRACT_SUPPORT" for c in claim_audit)
 
-    if has_hallucinations or (args.strict and has_mismatches):
+    if has_hallucinations or (args.strict and has_mismatches) or (args.strict_claims and has_unsupported_claims):
         sys.exit(1)
     sys.exit(0)
 
