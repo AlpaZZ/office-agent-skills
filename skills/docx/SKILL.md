@@ -1,6 +1,6 @@
 ---
 name: docx
-description: "Comprehensive Word document (.docx/.dotx) engine for creating, editing, styling, and reviewing documents. Covers: (1) On-brand corporate document generation and template extraction via the Brand Engine (extract, comprehend, verify, generate from .dotx/.docx templates and IntermediateDocuments), (2) Layout, margins, typography, and visual image blur/DPI linting via audit_layout.py (Indonesian Skripsi 4-4-3-3 cm, JIKI SINTA 2 2-column, APA 7th, or auto-extracted template profiles), (3) Academic papers with LaTeX math equations and Zotero/BibTeX citations via Pandoc, (4) Editorial document generation from scratch via docx-js, (5) Data science tabular injection via python-docx, (6) Legal redlining with Tracked Changes and native comments via OpenXML surgery, (7) Live Zotero CSL field code inspection and injection, and (8) Automated citation verification against CrossRef, arXiv, and PubMed. Trigger on any mention of Word documents, reports, proposals, memos, templates, thesis/skripsi formatting, brand kits, matching templates, or DOCX manipulation."
+description: "Global Microsoft Word (.docx/.dotx) engine for creating, editing, styling, and reviewing documents. Covers: (1) template and brand extraction, (2) neutral layout, typography, accessibility, and visual QA, (3) academic papers with LaTeX math and managed citations, (4) editorial document generation, (5) data tables, (6) legal redlining, (7) native Word fields, and (8) citation identity and claim-to-evidence verification. Use an attached template or the user's named standard as the source of truth; regional and institutional presets are opt-in only."
 license: MIT
 ---
 
@@ -11,7 +11,7 @@ The definitive Microsoft Word (`.docx` / `.dotx`) engine for AI coding agents. C
 | Task / Domain | Engine / Approach | When to Choose |
 |---|---|---|
 | **On-Brand Corporate** | `scripts/brandkit/` (`scripts/cli.py`) | Preserving company brand profiles, official fonts, colors, and layout shells fail-closed from templates. |
-| **Layout & Visual Linter** | `scripts/audit_layout.py` | Auditing margins (4-4-3-3 cm skripsi / 3-3-3-3 cm journal), fonts, line spacing, image DPI (<150 DPI), Laplacian blur, caption positions, and TOC. |
+| **Layout & Visual Linter** | `scripts/audit_layout.py` | Auditing the selected template or named standard for margins, fonts, line spacing, image quality, caption positions, tables, and TOC. |
 | **Template Contract** | `scripts/template_rules.py` | Reads the complete `.docx`/`.dotx` package and writes an observed formatting contract in Markdown before any edits. |
 | **Final Quality Gate** | `scripts/docx_quality.py` | Checks template drift, heading/page flow, broken cross-references, captions/TOC fields, accessibility, notes, headers/footers, table quality, style hygiene, field refresh, and optional rendering. |
 | **Academic & Math** | `scripts/pandoc/compile_academic.py` | Papers with LaTeX math formulas (`$$...$$`), footnotes, and linked Zotero/BibTeX bibliographies. |
@@ -109,17 +109,14 @@ The engine implements three deterministic core verbs plus four model-assisted le
 Audits Word documents against publication guidelines, institutional templates, or thesis guidelines:
 
 ```bash
-# 1. Audit Indonesian thesis / skripsi format (UI: 4-4-3-3 cm margins, 1.5/2.0 spacing, 300 DPI images)
-python scripts/audit_layout.py manuscript.docx --profile skripsi-id
+# 1. Audit against a named built-in standard only when the user selects it
+python scripts/audit_layout.py manuscript.docx --profile general
 
-# 2. Audit academic journal format (JIKI UI / SINTA 2: 2 columns, 3-3-3-3 cm margins, single space)
-python scripts/audit_layout.py manuscript.docx --profile jiki-journal
+# 2. Extract a complete template contract before editing
+python scripts/template_rules.py reference-template.docx -o template-rules.md
 
-# 3. Extract a complete template contract before editing
-python scripts/template_rules.py AuthorGuideline_JIKI.docx -o template-rules.md
-
-# 4. Auto-extract layout criteria directly from any reference template (.docx/.dotx)
-python scripts/audit_layout.py manuscript.docx --template AuthorGuideline_JIKI.docx
+# 3. Auto-extract layout criteria directly from any reference template (.docx/.dotx)
+python scripts/audit_layout.py manuscript.docx --template reference-template.docx
 
 # 5. Explicit CLI overrides for custom guidelines
 python scripts/audit_layout.py manuscript.docx \

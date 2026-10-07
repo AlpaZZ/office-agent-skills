@@ -10,7 +10,7 @@ Before any DOCX authoring or formatting change, ask whether a `.docx`/`.dotx` te
 python scripts/template_rules.py template.docx -o template-rules.md
 ```
 
-If none exists, ask the user to choose a baseline such as APA 7, the `general` profile, or an institutional standard. Record that choice before formatting.
+If none exists, ask the user to choose a named baseline such as APA 7, a journal guide, the `general` profile, or an institutional standard. Record that choice before formatting. Never assume a country, university, publisher, or language-specific convention.
 
 ---
 
@@ -61,7 +61,7 @@ custom covers, modern layouts, TOC                                     Track Cha
 ### Pathway 2: Academic & Mathematical Formulation (Pandoc)
 * **When to use**:
   - Document contains LaTeX mathematical notation (`$...$` or `$$...$$`).
-  - Academic papers, journal submissions (IEEE, APA, Nature), thesis chapters (*skripsi/tesis*).
+  - Academic papers, journal submissions, theses, and technical reports with a named style guide.
   - Bibliography integration from `references.bib` or Zotero export.
 * **Tooling**:
   - `scripts/pandoc/compile_academic.py`.

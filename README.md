@@ -23,7 +23,7 @@ The `skills/` directory contains five unified skills:
 ## Key Capabilities
 
 ### Document Layout, Typography & Visual Linter
-- **Comprehensive Document Linter**: Audits Word documents (`.docx`) against Indonesian Skripsi (UI, 4-4-3-3 cm margins), SINTA 2 Journal (JIKI UI, 2-column layout), or APA 7th standards using `audit_layout.py`.
+- **Comprehensive Document Linter**: Audits Word documents (`.docx`) against the supplied template or named standard using `audit_layout.py`; institutional presets are opt-in.
 - **Final DOCX Quality Gate**: Checks template drift, page-flow, cross-references, captions, accessibility, notes, headers/footers, tables, style hygiene, field refresh, and optional PDF rendering using `docx_quality.py`.
 - **Image Quality & Blurriness Detection**: Calculates Effective DPI from physical print extents (<150 DPI critical failure, >=300 DPI print quality) and measures sharpness via Laplacian variance to flag blurry or stretched figures.
 - **Academic Equation Integrity**: Ensures all mathematical formulas are native Word OMML / LaTeX equations (`<m:oMath>`), flagging formulas mistakenly pasted as raster screenshots.
@@ -120,11 +120,11 @@ python skills/citation-verifier/scripts/verify_citations.py draft.md --format ma
 
 ### 3. Audit Layout, Margins, Image DPI, and Captions
 ```bash
-# Audit against Indonesian Skripsi guidelines (UI: 4-4-3-3 cm margins, 300 DPI, TOC, captions)
-python skills/docx/scripts/audit_layout.py manuscript.docx --profile skripsi-id
+# Use the neutral baseline, or pass --template for any supplied guide
+python skills/docx/scripts/audit_layout.py manuscript.docx --profile general
 
-# Auto-learn layout rules directly from a target journal template
-python skills/docx/scripts/audit_layout.py manuscript.docx --template AuthorGuideline_JIKI.docx
+# Auto-learn layout rules directly from any target template
+python skills/docx/scripts/audit_layout.py manuscript.docx --template reference-template.docx
 ```
 
 ### 4. Compile Markdown with Math and Citations
