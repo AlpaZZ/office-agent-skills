@@ -13,3 +13,4 @@ markitdown[pptx]>=0.0.1
 # Academic, Pandoc & Math Processing
 pypandoc-binary>=1.13
 pytest>=8.0
+pywin32>=306; platform_system == "Windows"

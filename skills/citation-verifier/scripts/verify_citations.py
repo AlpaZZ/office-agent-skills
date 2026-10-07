@@ -179,7 +179,41 @@ def _content_tokens(value: str) -> Set[str]:
     return {x for x in re.findall(r"[a-z]{3,}", (value or "").lower()) if x not in stop}
 
 
-def audit_claim_support(text: str, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def load_local_evidence(evidence_dir: Optional[Path]) -> Dict[str, List[Dict[str, Any]]]:
+    """Load user-supplied full text keyed by DOI/PMID/arXiv in the filename."""
+    if not evidence_dir or not evidence_dir.exists():
+        return {}
+    loaded: Dict[str, List[Dict[str, Any]]] = {}
+    for path in sorted(evidence_dir.iterdir()):
+        if not path.is_file() or path.suffix.lower() not in {".pdf", ".txt", ".md"}:
+            continue
+        key = re.sub(r"[^a-z0-9]+", "", path.stem.lower())
+        try:
+            if path.suffix.lower() == ".pdf":
+                import fitz
+                pages = [{"page": i + 1, "text": page.get_text("text")} for i, page in enumerate(fitz.open(path))]
+            else:
+                pages = [{"page": None, "text": path.read_text(encoding="utf-8", errors="replace")}]
+        except Exception:
+            continue
+        loaded[key] = pages
+    return loaded
+
+
+def _evidence_for(identifier: str, local: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    key = re.sub(r"[^a-z0-9]+", "", identifier.lower())
+    return local.get(key, [])
+
+
+def _claim_kind(sentence: str) -> str:
+    s = sentence.lower()
+    if re.search(r"\b(increased|decreased|improved|reduced|accuracy|\d+(?:\.\d+)?%|significant)\b", s): return "quantitative-result"
+    if re.search(r"\b(cause|causes|caused|leads? to| ಪರಿಣಾಮ|because|due to)\b", s): return "causal"
+    if re.search(r"\b(method|dataset|sample|participants|experiment|trained|evaluated)\b", s): return "methodology"
+    return "descriptive"
+
+
+def audit_claim_support(text: str, results: List[Dict[str, Any]], local_evidence: Optional[Dict[str, List[Dict[str, Any]]]] = None, citation_map: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
     """Conservatively map cited sentences to source abstracts.
 
     A citation receives PASS only when its identifier is present in the same
@@ -190,6 +224,8 @@ def audit_claim_support(text: str, results: List[Dict[str, Any]]) -> List[Dict[s
     """
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text or "") if s.strip()]
     by_id = {str(r.get("identifier", "")).lower(): r for r in results if r.get("identifier")}
+    local_evidence = local_evidence or {}
+    citation_map = citation_map or {}
     id_patterns = [re.compile(r"10\.\d{4,9}/[^\s\"'<>\)\]]+", re.I), re.compile(r"\bPMID[:\s]+\d{6,9}\b", re.I), re.compile(r"\barXiv[:\s]+\d{4}\.\d{4,5}(?:v\d+)?", re.I)]
     out = []
     for sentence in sentences:
@@ -199,14 +235,25 @@ def audit_claim_support(text: str, results: List[Dict[str, Any]]) -> List[Dict[s
         has_marker = bool(identifiers or re.search(r"\[[0-9,;\s-]+\]|\([A-Z][A-Za-z-]+(?:\s+et al\.)?,?\s*\d{4}[a-z]?\)", sentence))
         if not has_marker:
             continue
+        numeric = re.findall(r"\[([0-9]+)\]", sentence)
+        identifiers.extend(citation_map.get(n, "") for n in numeric if citation_map.get(n))
         matched = [by_id.get(i.lower()) for i in identifiers if i.lower() in by_id]
         if not matched:
             out.append({"sentence": sentence, "status": "UNMAPPED_CITATION", "evidence": [], "details": "Citation marker tidak dapat dipetakan ke identifier sumber."})
             continue
         claim_tokens = _content_tokens(sentence)
-        evidence = [r.get("evidence_text", "") for r in matched if r.get("evidence_text")]
+        evidence = []
+        evidence_refs = []
+        for source in matched:
+            pages = _evidence_for(str(source.get("identifier", "")), local_evidence)
+            if pages:
+                evidence.extend(p.get("text", "") for p in pages)
+                evidence_refs.extend({"identifier": source.get("identifier"), "page": p.get("page"), "excerpt": _clean_evidence(p.get("text", ""))[:500]} for p in pages)
+            elif source.get("evidence_text"):
+                evidence.append(source["evidence_text"])
+                evidence_refs.append({"identifier": source.get("identifier"), "page": None, "excerpt": _clean_evidence(source["evidence_text"])[:500]})
         if not evidence:
-            out.append({"sentence": sentence, "status": "EVIDENCE_UNAVAILABLE", "evidence": [r.get("identifier") for r in matched], "details": "Registry mengonfirmasi metadata, tetapi abstract/full text sumber tidak tersedia."})
+            out.append({"sentence": sentence, "claim_kind": _claim_kind(sentence), "status": "EVIDENCE_UNAVAILABLE", "evidence": [r.get("identifier") for r in matched], "details": "Registry mengonfirmasi metadata, tetapi full text/abstract sumber tidak tersedia."})
             continue
         scores = []
         for ev in evidence:
@@ -215,7 +262,7 @@ def audit_claim_support(text: str, results: List[Dict[str, Any]]) -> List[Dict[s
             scores.append(overlap / max(1, len(claim_tokens)))
         best = max(scores)
         status = "ABSTRACT_SUPPORT" if best >= 0.20 and max(len(claim_tokens), 1) >= 3 else "ABSTRACT_NO_SUPPORT"
-        out.append({"sentence": sentence, "status": status, "score": round(best, 3), "evidence": [r.get("identifier") for r in matched], "details": "Kecocokan leksikal terhadap abstract; verifikasi full text tetap diperlukan untuk klaim rinci."})
+        out.append({"sentence": sentence, "claim_kind": _claim_kind(sentence), "status": status, "score": round(best, 3), "evidence": [r.get("identifier") for r in matched], "evidence_refs": evidence_refs, "details": "Kecocokan leksikal terhadap bukti sumber; klaim rinci tetap memerlukan pemeriksaan halaman/section."})
     return out
 
 
@@ -1468,10 +1515,11 @@ def format_markdown_report(results: List[Dict[str, Any]], target_file: Path, cla
 
     if claim_audit:
         lines.append("\n## Claim-to-Evidence Audit\n")
-        lines.append("| Status | Sentence | Evidence | Details |")
-        lines.append("| :--- | :--- | :--- | :--- |")
+        lines.append("| Status | Claim type | Sentence | Evidence | Page/excerpt | Details |")
+        lines.append("| :--- | :--- | :--- | :--- | :--- | :--- |")
         for claim in claim_audit:
-            lines.append(f"| {claim['status']} | {claim['sentence'].replace('|', '/') } | {', '.join(claim.get('evidence', [])) or '-'} | {claim.get('details', '').replace('|', '/')} |")
+            refs = "<br>".join(f"{r.get('identifier')}, p.{r.get('page') or '-'}: {r.get('excerpt', '')}" for r in claim.get('evidence_refs', [])) or "-"
+            lines.append(f"| {claim['status']} | {claim.get('claim_kind', '-')} | {claim['sentence'].replace('|', '/') } | {', '.join(claim.get('evidence', [])) or '-'} | {refs.replace('|', '/')} | {claim.get('details', '').replace('|', '/')} |")
     lines.append("\n> **Epistemic rule**: registry resolution never proves claim support. `ABSTRACT_SUPPORT` only means the cited sentence has conservative lexical overlap with retrieved abstract evidence; full-text review is required for detailed, causal, quantitative, or negative claims.")
     return "\n".join(lines)
 
@@ -1491,6 +1539,8 @@ def main():
     parser.add_argument("--strict", action="store_true", help="Exit with code 1 if any citation is missing or mismatched")
     parser.add_argument("--claim-audit", action="store_true", help="Map each cited sentence to retrieved source evidence; unmapped or unsupported claims are never marked as supported")
     parser.add_argument("--strict-claims", action="store_true", help="Exit with code 1 unless every cited sentence has ABSTRACT_SUPPORT")
+    parser.add_argument("--evidence-dir", help="Directory of full-text .pdf/.txt/.md files named by DOI, PMID, or arXiv ID")
+    parser.add_argument("--citation-map", help="JSON map for numeric markers, for example {\"1\": \"10.1234/example\"}")
 
     args = parser.parse_args()
     input_path = Path(args.input_path).resolve()
@@ -1515,7 +1565,15 @@ def main():
     results = run_verification(citations, verifier)
     claim_audit = []
     if args.claim_audit or args.strict_claims:
-        claim_audit = audit_claim_support(extract_text_from_docx(input_path) if input_path.suffix.lower() in (".docx", ".dotx") else input_path.read_text(encoding="utf-8", errors="replace"), results)
+        citation_map = {}
+        if args.citation_map:
+            citation_map = json.loads(Path(args.citation_map).read_text(encoding="utf-8"))
+        claim_audit = audit_claim_support(
+            extract_text_from_docx(input_path) if input_path.suffix.lower() in (".docx", ".dotx") else input_path.read_text(encoding="utf-8", errors="replace"),
+            results,
+            local_evidence=load_local_evidence(Path(args.evidence_dir).resolve() if args.evidence_dir else None),
+            citation_map=citation_map,
+        )
         by_id = {}
         for claim in claim_audit:
             for ident in claim.get("evidence", []):

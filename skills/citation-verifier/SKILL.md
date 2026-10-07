@@ -56,6 +56,13 @@ python scripts/verify_citations.py paper.tex --strict
 # 5. Audit every cited sentence against retrieved abstract evidence
 python scripts/verify_citations.py manuscript.docx --claim-audit \
   --strict-claims --format markdown --output claim-audit.md
+
+# 6. Add lawful local full text for page/section evidence.
+#    Filename must contain the normalized identifier, for example:
+#    evidence/10.1234-example.pdf
+python scripts/verify_citations.py manuscript.docx --claim-audit \
+  --citation-map citation-map.json --evidence-dir evidence \
+  --strict-claims --format markdown --output evidence-ledger.md
 ```
 
 ### Options
@@ -66,6 +73,8 @@ python scripts/verify_citations.py manuscript.docx --claim-audit \
 - `--strict`: Return exit code 1 if any citation is missing or has a mismatched title.
 - `--claim-audit`: Map each cited sentence to evidence retrieved from the cited source. Numeric or author-year markers that cannot be mapped are reported as `UNMAPPED_CITATION`.
 - `--strict-claims`: Return exit code 1 unless every cited sentence reaches `ABSTRACT_SUPPORT`.
+- `--evidence-dir PATH`: Read user-supplied full-text PDF, Markdown, or text files and attach page/excerpt evidence to the ledger.
+- `--citation-map PATH`: Map numeric markers such as `[1]` to identifiers; unmapped markers remain failures.
 - `--no-cache`: Force live API requests bypassing `.citation_cache.json`.
 - `--timeout SECONDS`: Network timeout per request (default: 10).
 

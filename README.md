@@ -25,6 +25,7 @@ The `skills/` directory contains five unified skills:
 ### Document Layout, Typography & Visual Linter
 - **Comprehensive Document Linter**: Audits Word documents (`.docx`) against the supplied template or named standard using `audit_layout.py`; institutional presets are opt-in.
 - **Final DOCX Quality Gate**: Checks template drift, page-flow, cross-references, captions, accessibility, notes, headers/footers, tables, style hygiene, field refresh, and optional PDF rendering using `docx_quality.py`.
+- **Evidence-backed citations**: Maps cited sentences to source abstracts or local full-text evidence, records page/excerpt anchors, and fails closed on unmapped numeric citations.
 - **Image Quality & Blurriness Detection**: Calculates Effective DPI from physical print extents (<150 DPI critical failure, >=300 DPI print quality) and measures sharpness via Laplacian variance to flag blurry or stretched figures.
 - **Academic Equation Integrity**: Ensures all mathematical formulas are native Word OMML / LaTeX equations (`<m:oMath>`), flagging formulas mistakenly pasted as raster screenshots.
 - **Caption & Hierarchy Placement**: Enforces table captions placed ABOVE tables, figure captions placed BELOW figures, and flags unstyled bold paragraphs masquerading as headings.

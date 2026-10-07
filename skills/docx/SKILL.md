@@ -137,6 +137,10 @@ python scripts/audit_layout.py manuscript.docx --format json -o layout_audit.jso
 python scripts/docx_quality.py manuscript.docx \
   --template template.docx --fix-fields --render-dir qa-render \
   --format json --output docx-quality.json
+
+# 8. Check dependencies and use Microsoft Word rendering when Word is installed
+python scripts/doctor.py
+python scripts/word_visual_qa.py manuscript.docx --pdf qa-render/word.pdf
 ```
 
 **Checked Dimensions & Standards**:
@@ -155,7 +159,7 @@ drift, headings that can orphan on a page, broken REF/PAGEREF fields, missing
 alt text and table header markers, inconsistent notes, stale headers/footers,
 direct-formatting style drift, and unsafe field refresh state. A non-zero exit
 code means a blocking accessibility or integrity finding remains. Rendering
-requires LibreOffice; when it is unavailable, the report records that fact.
+uses Microsoft Word COM when available and falls back to LibreOffice when it is not.
 
 ---
 

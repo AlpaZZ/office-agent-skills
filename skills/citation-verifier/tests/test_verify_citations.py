@@ -22,6 +22,7 @@ from verify_citations import (
     CitationVerifier,
     extract_mendeley_citations_from_docx,
     audit_claim_support,
+    load_local_evidence,
 )
 
 
@@ -34,6 +35,19 @@ class TestCitationVerifier(unittest.TestCase):
         self.assertEqual(unmapped[0]["status"], "UNMAPPED_CITATION")
         unavailable = audit_claim_support("The model improves accuracy (doi:10.1234/example).", [{"identifier": "10.1234/example"}])
         self.assertEqual(unavailable[0]["status"], "EVIDENCE_UNAVAILABLE")
+
+    def test_numeric_claim_uses_citation_map_and_local_evidence(self):
+        evidence_dir = Path(self.id())
+        evidence_dir.mkdir(exist_ok=True)
+        try:
+            (evidence_dir / "10.1234-example.txt").write_text("The model improves skin disease image classification accuracy.", encoding="utf-8")
+            local = load_local_evidence(evidence_dir)
+            result = audit_claim_support("The model improves skin disease image classification accuracy [1].", [{"identifier": "10.1234/example"}], local, {"1": "10.1234/example"})
+            self.assertEqual(result[0]["status"], "ABSTRACT_SUPPORT")
+            self.assertEqual(result[0]["evidence_refs"][0]["page"], None)
+        finally:
+            for child in evidence_dir.iterdir(): child.unlink()
+            evidence_dir.rmdir()
 
     def test_normalize_title(self):
         t1 = "Searching for MobileNetV3!"
